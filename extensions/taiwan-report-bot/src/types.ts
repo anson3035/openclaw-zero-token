@@ -49,11 +49,19 @@ export interface LegalCitation {
   penalty: string;
 }
 
+export interface SmsArtifact {
+  number: string;
+  body: string;
+  deepLink: string;
+  note?: string;
+}
+
 export interface ReportArtifact {
   markdown: string;
   emailSubject: string;
   emailBody: string;
   recipients: string[];
   onlineFormUrl?: string;
+  sms?: SmsArtifact;
   legalCitations: LegalCitation[];
 }

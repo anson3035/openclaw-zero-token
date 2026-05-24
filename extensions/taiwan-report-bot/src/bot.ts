@@ -36,6 +36,7 @@ export function createBot(): Telegraf {
         "可用指令：",
         "/draft — 取得本次檢舉信草稿（讓您手動寄出，較合規）",
         "/send — 由 Bot 代寄至承辦單位（需 SMTP 設定）",
+        "/sms — 取得各縣市簡訊舉發內容與一鍵發送連結（限交通違停）",
         "/to <email> — 覆寫收件單位",
         "/category <traffic|environment|building|condominium> — 強制指定違規類型",
         "/address <地址> — 手動補上地址（EXIF 無 GPS 時）",
@@ -46,7 +47,9 @@ export function createBot(): Telegraf {
     ),
   );
 
-  bot.help((ctx) => ctx.reply("/draft  /send  /to <email>  /category <type>  /address <地址>  /cancel"));
+  bot.help((ctx) =>
+    ctx.reply("/draft  /send  /sms  /to <email>  /category <type>  /address <地址>  /cancel"),
+  );
 
   bot.on(message("photo"), async (ctx) => {
     await handleIncomingMedia(ctx);
@@ -61,6 +64,41 @@ export function createBot(): Telegraf {
     if (mime.startsWith("image/") || mime.startsWith("video/")) {
       await handleIncomingMedia(ctx);
     }
+  });
+
+  bot.command("sms", async (ctx) => {
+    const session = getSession(ctx.chat.id);
+    if (!session) {
+      await ctx.reply("尚無待處理檢舉。請先傳送照片或影片。");
+      return;
+    }
+    const sms = session.artifact.sms;
+    if (!sms) {
+      await ctx.reply(
+        "📵 此案件不適用簡訊檢舉。\n簡訊檢舉目前僅支援交通違規（違停），且需可辨識車牌與所在縣市。",
+      );
+      return;
+    }
+    await ctx.reply(
+      [
+        "📱 *簡訊檢舉*",
+        "",
+        `*發送至*：\`${sms.number}\``,
+        sms.note ? `*說明*：${sms.note}` : "",
+        "",
+        "*簡訊內容*：",
+        "```",
+        sms.body,
+        "```",
+        "",
+        `👉 一鍵發送（手機開啟）：${sms.deepLink}`,
+        "",
+        "⚠ 請於發送後保留簡訊發送記錄與原始照片，便於後續舉證。",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      { parse_mode: "Markdown" },
+    );
   });
 
   bot.command("draft", async (ctx) => {
@@ -243,9 +281,12 @@ async function handleIncomingMedia(ctx: import("telegraf").Context): Promise<voi
         "下一步：",
         "• /draft — 取得 email 草稿",
         smtpConfigured() ? "• /send — Bot 代寄至承辦單位" : "• (代寄未啟用：SMTP 未設定)",
+        artifact.sms ? "• /sms — 取得簡訊檢舉內容與一鍵發送連結" : undefined,
         "• /category <type> — 修正違規類型",
         "• /address <地址> — 補上 / 修正地址",
-      ].join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n"),
     );
   } catch (err) {
     console.error(err);

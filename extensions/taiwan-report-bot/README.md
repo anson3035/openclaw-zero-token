@@ -24,10 +24,10 @@ Supported categories:
                         └──────────────────────────┘
                                        │
                                        ▼
-                ┌───────────────┐  ┌───────────┐  ┌───────────────┐
-                │  /draft text  │  │  /send    │  │ online form   │
-                │  (manual)     │  │  (SMTP)   │  │ deep link     │
-                └───────────────┘  └───────────┘  └───────────────┘
+        ┌──────────┐  ┌──────────┐  ┌──────────────┐  ┌──────────┐
+        │  /draft  │  │  /send   │  │ online form  │  │  /sms    │
+        │  (text)  │  │  (SMTP)  │  │ deep link    │  │ deep link│
+        └──────────┘  └──────────┘  └──────────────┘  └──────────┘
 ```
 
 ## Setup
@@ -63,6 +63,7 @@ pnpm start            # or: node --import tsx src/index.ts
 | send a photo / video | analyze → reply with full report markdown |
 | `/draft` | reply with email subject + body for manual sending |
 | `/send [override@email]` | SMTP-send to authority (or override) |
+| `/sms` | reply with SMS body + `sms:` deep link (one-tap send on phone). Traffic violations only. |
 | `/to <email>` | rewrite recipient for the current session |
 | `/category <traffic\|environment\|building\|condominium>` | force a category |
 | `/address <地址>` | set address manually when EXIF lacks GPS |
@@ -71,17 +72,19 @@ pnpm start            # or: node --import tsx src/index.ts
 
 ## Built-in authority routing
 
-| City | Traffic email | Online form |
-|---|---|---|
-| 台北市 | tpd@mail.taipei.gov.tw | TPD filing |
-| 新北市 | 10618@police.ntpc.gov.tw | NTPC filing |
-| 桃園市 | tpd@mail.tycg.gov.tw | TYHP |
-| 台中市 | tcpb@taichung.gov.tw | Taichung filing |
-| 台南市 | tnpd@tainan.gov.tw | Tainan filing |
-| 高雄市 | khpb@kcg.gov.tw | KCPD filing |
-| (other) | service@npa.gov.tw | — |
+| City | Traffic email | Online form | SMS number |
+|---|---|---|---|
+| 台北市 | tpd@mail.taipei.gov.tw | TPD filing | 0911-510119 |
+| 新北市 | 10618@police.ntpc.gov.tw | NTPC filing | 0911-511110 |
+| 桃園市 | tpd@mail.tycg.gov.tw | TYHP | 0911-512110 |
+| 台中市 | tcpb@taichung.gov.tw | Taichung filing | 0911-513110 |
+| 台南市 | tnpd@tainan.gov.tw | Tainan filing | 0911-514110 |
+| 高雄市 | khpb@kcg.gov.tw | KCPD filing | 0911-515110 |
+| (other) | service@npa.gov.tw | — | — |
 
 (Environment / Building / Condominium follow the same per-city pattern; see `src/data/authorities.ts`.)
+
+> ⚠ **SMS numbers verification**: per-city SMS reporting lines change periodically. Verify against the relevant 警察局交通隊 webpage or the 警政服務 App before relying on them for production filings. The bot includes a `smsNote` per city you can override in `src/data/authorities.ts`.
 
 ## Compliance notes
 
@@ -100,6 +103,7 @@ Unit coverage:
 - Legal-rule pattern matching (traffic / environment / building / condominium)
 - Report builder (markdown structure, email subject, condominium notice, emergency notice, evidence gaps, prefilled online form URL, recipient routing)
 - Address parsing (city extraction, 臺/台 normalization)
+- SMS body formatting and `sms:` deep-link generation (Taiwan E.164 normalization, plate/time/address composition, segment-length truncation, traffic-only gating, per-city number routing)
 
 Live OpenAI / Telegram calls are not covered by unit tests; run the bot end-to-end with a real Telegram chat once env is set.
 

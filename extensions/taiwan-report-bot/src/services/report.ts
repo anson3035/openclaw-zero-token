@@ -1,6 +1,6 @@
-import { lookupRecipients } from "../data/authorities.js";
+import { lookupRecipients, normalizePhoneE164 } from "../data/authorities.js";
 import { categoryLabel, matchLegalCitations } from "../data/legal-rules.js";
-import type { ReportArtifact, ReportContext } from "../types.js";
+import type { ReportArtifact, ReportContext, SmsArtifact } from "../types.js";
 
 function formatTimestamp(date?: Date): string {
   if (!date) return "未知（EXIF 缺失，建議補上拍攝時間）";
@@ -70,10 +70,56 @@ function buildOnlineFormUrl(
   return `${baseUrl}${sep}${params.toString()}`;
 }
 
+function formatSmsTimestamp(date?: Date): string {
+  if (!date) return "拍攝時間待補";
+  return date.toLocaleString("zh-TW", {
+    timeZone: "Asia/Taipei",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * Build a Big-5/UCS-2 friendly SMS body, ≤ ~140 chars when possible.
+ * Chinese SMS segments at 70 chars; keep concise to fit in 1–2 segments.
+ */
+export function buildSmsBody(ctx: ReportContext): string {
+  const plate = ctx.analysis.identifiers.licensePlate ?? "車牌不明";
+  const time = formatSmsTimestamp(ctx.evidence.capturedAt);
+  const addr = ctx.address.full.length > 40
+    ? `${ctx.address.full.slice(0, 40)}…`
+    : ctx.address.full;
+  const act =
+    ctx.analysis.description.length > 20
+      ? `${ctx.analysis.description.slice(0, 20)}…`
+      : ctx.analysis.description;
+  return `檢舉違停 車牌${plate} 時間${time} 地點${addr} 違規${act}`;
+}
+
+function buildSmsDeepLink(number: string, body: string): string {
+  return `sms:${normalizePhoneE164(number)}?body=${encodeURIComponent(body)}`;
+}
+
+function buildSmsArtifact(ctx: ReportContext): SmsArtifact | undefined {
+  if (ctx.analysis.category !== "traffic") return undefined;
+  const recipient = lookupRecipients(ctx.address.city, "traffic");
+  if (!recipient.smsNumber) return undefined;
+  const body = buildSmsBody(ctx);
+  return {
+    number: recipient.smsNumber,
+    body,
+    deepLink: buildSmsDeepLink(recipient.smsNumber, body),
+    note: recipient.smsNote,
+  };
+}
+
 export function buildReport(ctx: ReportContext): ReportArtifact {
   const label = categoryLabel(ctx.analysis.category);
   const citations = matchLegalCitations(ctx.analysis.category, ctx.analysis.description);
   const recipient = lookupRecipients(ctx.address.city, ctx.analysis.category);
+  const sms = buildSmsArtifact(ctx);
 
   const citationLines = citations
     .map((c) => `- **${c.statute} ${c.article}**：${c.penalty}`)
@@ -100,7 +146,11 @@ ${citationLines}
 - 隱私處理建議：${privacyAdvice(ctx)}
 
 **5. 承辦單位**
-- Email：${recipient.email}${recipient.onlineForm ? `\n- 線上檢舉：${recipient.onlineForm}` : ""}
+- Email：${recipient.email}${recipient.onlineForm ? `\n- 線上檢舉：${recipient.onlineForm}` : ""}${
+    sms
+      ? `\n- 簡訊檢舉：\`${sms.number}\`${sms.note ? `（${sms.note}）` : ""}\n  📱 一鍵發送：${sms.deepLink}`
+      : ""
+  }
 ${condominiumNotice(ctx)}${urgencyNotice(ctx)}`;
 
   const emailSubject = `【民眾檢舉】${label} - ${ctx.address.full}${
@@ -136,6 +186,7 @@ ${recipient.email.split("@")[1] ?? "承辦單位"}
     emailBody,
     recipients: [recipient.email],
     onlineFormUrl: buildOnlineFormUrl(recipient.onlineForm, ctx),
+    sms,
     legalCitations: citations,
   };
 }
