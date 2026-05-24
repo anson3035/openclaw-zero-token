@@ -5,6 +5,7 @@ import { loadConfig, smtpConfigured, userAllowed } from "./config.js";
 import { audit } from "./services/audit.js";
 import { readExif } from "./services/exif.js";
 import { reverseGeocode, parseUserAddress } from "./services/geocoding.js";
+import { recognizePlate } from "./services/lpr.js";
 import { MailerNotConfiguredError, sendReport } from "./services/mailer.js";
 import {
   rateLimitMessage,
@@ -17,7 +18,8 @@ import {
   getIdentity,
   saveIdentity,
 } from "./services/store.js";
-import { analyzeMedia, overrideCategory } from "./services/vision.js";
+import { extractFrames, isVideoPath } from "./services/video.js";
+import { analyzeMedia, enrichPlateWithLpr, overrideCategory } from "./services/vision.js";
 import { clearSession, getSession, saveSession, tgSubject } from "./session.js";
 import type {
   MediaEvidence,
@@ -67,6 +69,7 @@ export function createBot(): Telegraf {
         "/draft — 取得 email 草稿（手動寄出，較合規）",
         "/send — 進入寄送流程（會先要求 confirm）",
         "/confirm — 確認寄出（在 /send 之後）",
+        "/lpr — 商業級車牌辨識（ANPR，含台灣車牌規則修正與多幀比對）",
         "/sms — 取得簡訊舉發內容與一鍵發送連結（限交通違停）",
         "/to <email> — 覆寫收件單位",
         "/category <traffic|environment|building|condominium> — 強制指定違規類型",
@@ -80,7 +83,7 @@ export function createBot(): Telegraf {
 
   bot.help((ctx) =>
     ctx.reply(
-      "/identify  /whoami  /draft  /send  /confirm  /sms  /to <email>  /category <type>  /address <地址>  /cancel  /forgetme",
+      "/identify  /whoami  /draft  /send  /confirm  /lpr  /sms  /to <email>  /category <type>  /address <地址>  /cancel  /forgetme",
     ),
   );
 
@@ -145,6 +148,39 @@ export function createBot(): Telegraf {
   // -------------------------------------------------------------------------
   // Workflow commands
   // -------------------------------------------------------------------------
+  bot.command("lpr", async (ctx) => {
+    const session = await getSession(ctx.chat.id);
+    if (!session) {
+      await ctx.reply("尚無待處理檢舉。請先傳送照片或影片。");
+      return;
+    }
+    const imagePaths = session.attachmentPaths.filter((p) => !isVideoPath(p));
+    if (imagePaths.length === 0) {
+      await ctx.reply("⚠ 本次案件無可分析之圖片（僅含影片時請先重新上傳，系統會自動抽幀）。");
+      return;
+    }
+    await ctx.reply(`🔍 商業級車牌辨識中（${imagePaths.length} 張影像）…`);
+    try {
+      const lpr = await recognizePlate(imagePaths, session.ctx.analysis.subject || "Unspecified");
+      const lines = [
+        "📋 *車牌辨識結果（ANPR）*",
+        "",
+        `*辨識車牌*：\`${lpr.resolved_plate.license_plate_number}\``,
+        `*信心分數*：${(lpr.resolved_plate.confidence_score * 100).toFixed(0)}%`,
+        `*車牌類型*：${lpr.analysis.plate_type}`,
+        `*影像瑕疵*：${lpr.analysis.detected_artifacts.join("、") || "none"}`,
+        `*原始 OCR*：\`${lpr.analysis.raw_visual_text}\``,
+        "",
+        lpr.resolved_plate.is_ambiguous
+          ? `⚠ *存有歧義*：${lpr.resolved_plate.ambiguity_details}`
+          : "✅ 無歧義字元",
+      ].join("\n");
+      await ctx.reply(lines, { parse_mode: "Markdown" });
+    } catch (err) {
+      await ctx.reply(`❌ LPR 失敗：${(err as Error).message}`);
+    }
+  });
+
   bot.command("draft", async (ctx) => {
     const session = await getSession(ctx.chat.id);
     if (!session) {
@@ -458,13 +494,40 @@ async function handleAlbum(ctxs: import("telegraf").Context[]): Promise<void> {
       };
     }
 
-    // analyze using the primary (first) image
-    const analysis = await analyzeMedia(evidences[0]!.filePath, caption);
+    // For analysis we need image bytes. If the primary evidence is a video,
+    // extract a middle frame and use that for the violation classifier.
+    let primaryForAnalysis = evidences[0]!.filePath;
+    const lprPool: string[] = [];
+    for (const e of evidences) {
+      if (e.mimeType.startsWith("video/")) {
+        try {
+          const frames = await extractFrames(e.filePath, `${e.filePath}.frames`, 5);
+          if (frames.length > 0) {
+            if (e === evidences[0]) primaryForAnalysis = frames[Math.floor(frames.length / 2)]!;
+            lprPool.push(...frames);
+          }
+        } catch (err) {
+          console.error("[video] frame extraction failed:", (err as Error).message);
+        }
+      } else {
+        lprPool.push(e.filePath);
+      }
+    }
+
+    // analyze using the primary frame
+    let analysis = await analyzeMedia(primaryForAnalysis, caption);
     await audit({
       type: "analyzed",
       subject: tgSubject(first.chat.id),
       meta: { userId: first.from.id, category: analysis.category, confidence: analysis.confidence },
     });
+
+    // for traffic cases, run commercial-grade ANPR over all available frames
+    // to upgrade the plate identifier with cross-frame verification.
+    if (analysis.category === "traffic" && lprPool.length > 0) {
+      const enriched = await enrichPlateWithLpr(analysis, lprPool);
+      analysis = enriched.analysis;
+    }
 
     const identity = await getIdentity(first.chat.id);
     const reportCtx: ReportContext = {

@@ -96,6 +96,7 @@ When the API is running, open `http://127.0.0.1:8787/` in any browser for the **
 | `/draft` | reply with email subject + body for manual sending |
 | `/send [override@email]` | start send flow — requires `/confirm` to actually dispatch |
 | `/confirm` | confirm and dispatch the pending send |
+| `/lpr` | commercial-grade Taiwan ANPR — multi-frame verification + plate-rule correction (auto-runs on traffic cases; this command shows the raw breakdown: type / artifacts / raw OCR / confidence / ambiguity) |
 | `/sms` | reply with SMS body + `sms:` deep link (one-tap send on phone). Traffic violations only. |
 | `/to <email>` | rewrite recipient for the current session |
 | `/category <traffic\|environment\|building\|condominium>` | force a category |
@@ -106,6 +107,22 @@ When the API is running, open `http://127.0.0.1:8787/` in any browser for the **
 ### Multi-photo (album / media group)
 
 Send 2+ photos as a **Telegram album** (long-press → select multiple → send). The bot buffers them by `media_group_id` and treats them as one report. This is required for continuous-violation traffic cases (e.g. 違停) per 道交 §7-1, which mandates ≥ 2 photos taken ≥ 3 minutes apart.
+
+### License plate recognition (ANPR)
+
+Traffic cases run a second-pass commercial-grade Taiwan ANPR engine (`src/services/lpr.ts`) over all available images / video frames after the main violation analysis. The engine enforces MOTC plate rules:
+
+- `I` and `O` are never used → corrected to `1` and `0`
+- Modern 7-character plates exclude the digit `4` in the numeric sequence
+- Format awareness: 7-char (3L-4D), older 6-char (2L-4D / 4D-2L), motorcycle (3L-3D / 2L-3D), EV (`E*-****`), taxi (`T*-****` / `Y*-****`)
+
+Cross-frame verification: when multiple frames are available (album or video), characters are compared across frames to filter transient noise (reflections, motion blur, glare).
+
+The engine emits a structured result with `confidence_score`, `is_ambiguous`, `raw_visual_text`, and `detected_artifacts`. If confidence ≥ 0.6 and no `?` placeholders remain, the plate auto-upgrades the main analysis's `identifiers.licensePlate`. Otherwise the original analysis is kept unchanged.
+
+### Video support
+
+Videos are decoded with `ffmpeg-static` and sampled at 5 evenly-spaced timestamps (skipping the first/last 5% of duration). The middle frame is used for the violation classifier; all frames are pooled for the ANPR pass.
 
 ### Compliance gate
 
@@ -220,6 +237,7 @@ Auth tokens are stored in browser `localStorage` (30-day TTL). Logout calls `/ap
 | `POST` | `/api/session/address` | bearer | `{address}` → updated `{artifact}` |
 | `POST` | `/api/session/cancel` | bearer | drop session |
 | `POST` | `/api/send` | bearer | `{to?}` → `{pending, preview}`. Pass `{confirm:true}` to actually dispatch. |
+| `POST` | `/api/lpr` | bearer | multipart `files[]` + optional `vehicleTypeHint` → `{lpr: {analysis, resolved_plate}}` |
 | `GET` | `/api/sms` | bearer | `{sms: {number, body, deepLink, note}}` |
 
 ## Desktop (Electron)

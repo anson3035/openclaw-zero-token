@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { loadConfig } from "../config.js";
 import type { AnalyzedViolation, ViolationCategory } from "../types.js";
+import { recognizePlate, type LprResult } from "./lpr.js";
 
 let cachedClient: OpenAI | undefined;
 function client(): OpenAI {
@@ -95,4 +96,40 @@ export function overrideCategory(
   category: ViolationCategory,
 ): AnalyzedViolation {
   return { ...analysis, category };
+}
+
+/**
+ * For traffic violations, run the commercial-grade ANPR engine over the
+ * provided images (single photo or multiple video frames) to upgrade the
+ * plate identifier with cross-frame verification + Taiwan plate-rule
+ * correction. Returns the enriched analysis + raw LPR result.
+ *
+ * Failures here do not throw — the original analysis is returned unchanged
+ * so the main pipeline keeps working even if the LPR call is rate-limited
+ * or returns malformed JSON.
+ */
+export async function enrichPlateWithLpr(
+  analysis: AnalyzedViolation,
+  imagePaths: string[],
+): Promise<{ analysis: AnalyzedViolation; lpr?: LprResult }> {
+  if (analysis.category !== "traffic" || imagePaths.length === 0) {
+    return { analysis };
+  }
+  try {
+    const hint = analysis.subject || "Unspecified";
+    const lpr = await recognizePlate(imagePaths, hint);
+    const plate = lpr.resolved_plate.license_plate_number;
+    const isClean = plate && !plate.includes("?") && lpr.resolved_plate.confidence_score >= 0.6;
+    if (!isClean) return { analysis, lpr };
+    return {
+      analysis: {
+        ...analysis,
+        identifiers: { ...analysis.identifiers, licensePlate: plate },
+      },
+      lpr,
+    };
+  } catch (err) {
+    console.error("[lpr] enrichment failed:", (err as Error).message);
+    return { analysis };
+  }
 }

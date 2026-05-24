@@ -17,6 +17,7 @@ import {
 } from "../services/auth.js";
 import { reverseGeocode, parseUserAddress } from "../services/geocoding.js";
 import { readExif } from "../services/exif.js";
+import { recognizePlate } from "../services/lpr.js";
 import { MailerNotConfiguredError, sendReport } from "../services/mailer.js";
 import {
   rateLimitMessage,
@@ -300,6 +301,35 @@ export function createApi(): Hono<AppEnv> {
       if (err instanceof MailerNotConfiguredError) {
         return c.json({ error: "SMTP 未設定" }, 400);
       }
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post("/api/lpr", requireAuth, async (c) => {
+    const user = c.get("user");
+    const form = await c.req.formData();
+    const files = form.getAll("files");
+    const vehicleTypeHint = (form.get("vehicleTypeHint") as string | null) ?? "Unspecified";
+    if (files.length === 0) return c.json({ error: "未提供圖片" }, 400);
+
+    const paths: string[] = [];
+    for (const f of files) {
+      if (!(f instanceof File)) continue;
+      const suffix = f.type.endsWith("png") ? "png" : "jpg";
+      const destPath = join(
+        loadConfig().EVIDENCE_DIR,
+        `${user.id}-lpr-${Date.now()}-${paths.length}.${suffix}`,
+      );
+      await mkdir(dirname(destPath), { recursive: true });
+      await writeFile(destPath, Buffer.from(await f.arrayBuffer()));
+      paths.push(destPath);
+    }
+    if (paths.length === 0) return c.json({ error: "檔案類型不支援" }, 400);
+
+    try {
+      const lpr = await recognizePlate(paths, vehicleTypeHint);
+      return c.json({ ok: true, lpr });
+    } catch (err) {
       return c.json({ error: (err as Error).message }, 500);
     }
   });
