@@ -6,3 +6,6 @@ export {
   saveSession,
   type PersistedSession,
 } from "./services/store.js";
+
+/** Subject key for Telegram chat audit entries. */
+export const tgSubject = (chatId: number): string => `tg:${chatId}`;

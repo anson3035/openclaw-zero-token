@@ -1,0 +1,7 @@
+{
+  "name": "taiwan-report-bot-desktop",
+  "version": "0.1.0",
+  "description": "Electron wrapper for the Taiwan Violation Reporting bot",
+  "private": true,
+  "main": "main.cjs"
+}

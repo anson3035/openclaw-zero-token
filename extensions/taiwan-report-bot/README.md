@@ -1,6 +1,22 @@
 # Taiwan Violation Reporting Bot
 
-A Telegram bot that turns photo / video evidence into a ready-to-send Taiwan administrative-violation report.
+Three frontends — Telegram bot, **Web UI**, **Electron desktop app** — sharing one backend, turning photo / video evidence into a ready-to-send Taiwan administrative-violation report.
+
+```
+                       Shared backend
+       ┌─────────────────────────────────────────────────┐
+       │  vision (GPT-4o) · exif · geocoding · report    │
+       │  builder · compliance gate · mailer · audit log │
+       │  rate-limit · persistent store · authorities    │
+       └────┬────────────────────────────────────────────┘
+            │
+   ┌────────┼────────┐
+   │        │        │
+ ┌─▼──┐  ┌──▼──┐  ┌──▼─────┐
+ │ TG │  │ Web │  │Desktop │
+ │bot │  │ SPA │  │Electron│
+ └────┘  └─────┘  └────────┘
+```
 
 Supported categories:
 - 交通違規 (Traffic — 道路交通管理處罰條例)
@@ -34,10 +50,20 @@ Supported categories:
 
 ```bash
 cd extensions/taiwan-report-bot
-pnpm install          # or npm install
+npm install
 cp .env.example .env  # then fill in TELEGRAM_BOT_TOKEN + OPENAI_API_KEY
-pnpm start            # or: node --import tsx src/index.ts
 ```
+
+### Run options
+
+```bash
+npm start             # both Telegram bot + HTTP API (default)
+npm run start:bot     # Telegram bot only
+npm run start:api     # HTTP API + Web UI only (defaults to port 8787)
+npm run desktop       # launch the Electron desktop app (also starts API)
+```
+
+When the API is running, open `http://127.0.0.1:8787/` in any browser for the **Web UI**.
 
 ### Required env
 
@@ -51,8 +77,11 @@ pnpm start            # or: node --import tsx src/index.ts
 | Key | Default | Purpose |
 |---|---|---|
 | `OPENAI_MODEL` | `gpt-4o` | Override model |
-| `SMTP_HOST/PORT/USER/PASS/FROM` | — | Enables `/send` |
+| `HTTP_PORT` | `8787` | Web/Desktop API port |
+| `RUN` | `bot,api` | Comma-separated list of services to start |
+| `SMTP_HOST/PORT/USER/PASS/FROM` | — | Enables `/send` (Telegram) and `📨 由系統代寄` (Web) |
 | `EVIDENCE_DIR` | `./evidence` | Where downloaded media is stored |
+| `DATA_DIR` | `./data` | Persistent store + audit log |
 | `ALLOWED_USER_IDS` | (empty) | Comma-separated Telegram user IDs whitelist |
 | `NOMINATIM_USER_AGENT` | `taiwan-report-bot/0.1` | Required by OSM |
 
@@ -149,7 +178,7 @@ In-memory token bucket per Telegram user:
 pnpm test
 ```
 
-Unit coverage (54 tests across 7 files):
+Unit coverage (68 tests across 9 files):
 - Legal-rule pattern matching (traffic / environment / building / condominium)
 - Report builder (markdown structure, email subject, condominium notice, emergency notice, evidence gaps, prefilled online form URL, recipient routing, reporter identity embedding, SHA-256 fingerprinting in body)
 - Address parsing (city extraction, 臺/台 normalization)
@@ -157,8 +186,51 @@ Unit coverage (54 tests across 7 files):
 - Compliance check (identity required, multi-photo enforcement, ≥ 3 min interval, EXIF timestamp warning, license-plate requirement, address resolution)
 - Rate limiter (capacity, per-user isolation, analysis vs send separation, burst exhaustion)
 - Persistent store (session round-trip with Date revival, identity round-trip, session/identity independence)
+- Auth (register / authenticate / token issuance & revocation, password length & username pattern, duplicate-name rejection)
+- HTTP API (health, 401 without bearer, register→login→/me round-trip, duplicate registration, bad login, null session for fresh user, identity required, logout revokes token)
 
 Live OpenAI / Telegram calls are not covered by unit tests; run the bot end-to-end with a real Telegram chat once env is set.
+
+## Web UI
+
+Open `http://127.0.0.1:8787/` once `npm run start:api` is running.
+
+Flow:
+
+1. **Register / Login** — username + password + reporter identity (name / contact / optional national-ID last 4). Identity is required by 道交 §7-1.
+2. **Upload** — drag-drop or click. Multi-file supported for continuous-violation traffic cases.
+3. **Auto-analysis** — system reads EXIF GPS + timestamp, hashes each file with SHA-256, calls GPT-4o vision, reverse-geocodes via Nominatim, runs the compliance gate.
+4. **Report card** — markdown report with compliance banner (✅ green / ⚠ amber). Buttons: `🏷 重新分類` / `📍 修正地址` / `📋 複製 email 草稿` / `📱 簡訊舉發` / `📨 由系統代寄`.
+5. **Send confirmation modal** — `📨` shows a recipient / subject / attachment-count preview; only `確認寄出` actually dispatches.
+
+Auth tokens are stored in browser `localStorage` (30-day TTL). Logout calls `/api/logout` which revokes the server-side token.
+
+### REST API (used by Web + Desktop)
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/health` | — | liveness + SMTP-configured flag |
+| `POST` | `/api/register` | — | `{username, password, name, contact, nationalId?}` → `{token, user}` |
+| `POST` | `/api/login` | — | `{username, password}` → `{token, user}` |
+| `POST` | `/api/logout` | bearer | revoke current token |
+| `GET` | `/api/me` | bearer | current user + identity |
+| `POST` | `/api/upload` | bearer | multipart `files[]` + `caption?` → `{artifact, evidence[]}` |
+| `GET` | `/api/session` | bearer | current report session (or `null`) |
+| `POST` | `/api/session/category` | bearer | `{category}` → updated `{artifact}` |
+| `POST` | `/api/session/address` | bearer | `{address}` → updated `{artifact}` |
+| `POST` | `/api/session/cancel` | bearer | drop session |
+| `POST` | `/api/send` | bearer | `{to?}` → `{pending, preview}`. Pass `{confirm:true}` to actually dispatch. |
+| `GET` | `/api/sms` | bearer | `{sms: {number, body, deepLink, note}}` |
+
+## Desktop (Electron)
+
+```bash
+npm run desktop
+```
+
+`desktop/main.cjs` spawns the API server as a child process (`node --import tsx src/server.ts`), waits for the port, then opens a 1100×800 `BrowserWindow` pointing at `http://127.0.0.1:8787/`. External links (and `sms:` deep links) open in the OS default app.
+
+For packaging into a distributable `.dmg` / `.exe` / `.AppImage`, use `electron-builder` (not bundled here yet; see Roadmap).
 
 ## Roadmap (known gaps, intentionally deferred)
 
@@ -172,15 +244,16 @@ The current implementation covers P0 (legal-correctness blockers) and key P1 ite
 - [ ] **EXIF orientation auto-rotation** — some phones store rotation in EXIF; the vision model occasionally analyzes a sideways image.
 
 ### P3 — nice-to-have
+- [ ] **electron-builder packaging** — distributable `.dmg` / `.exe` / `.AppImage` with code signing
 - [ ] **Dockerfile + docker-compose** for one-command deployment
-- [ ] **HTTP health endpoint** (`GET /healthz`) on a configurable port for k8s/Fly liveness probes
 - [ ] **Webhook mode** (vs long-polling) for higher throughput
 - [ ] **Geocoding cache + throttle** — Nominatim's policy is 1 req/sec; add a tiny in-process LRU cache and request throttling
 - [ ] **OpenAI retry / backoff** with circuit breaker on persistent failure
 - [ ] **PDF report generation** for authorities that prefer formal documents
 - [ ] **RFC 3161 trusted timestamping** of the SHA-256 hash for stronger evidentiary value
 - [ ] **i18n** — English fallback for system messages (currently zh-TW only)
-- [ ] **`/status` and `/list`** — show current session and recall past submissions
+- [ ] **`/status` and `/list` + history view** — recall past submissions in Web/Desktop
+- [ ] **CSRF protection** for cookie-based sessions (currently bearer-token only, so not needed yet)
 
 ### Explicit non-goals
 - We will **not** auto-submit to police online forms — captchas + ToS would require headless browsers and likely violate authority terms.

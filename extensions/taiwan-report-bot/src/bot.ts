@@ -18,7 +18,7 @@ import {
   saveIdentity,
 } from "./services/store.js";
 import { analyzeMedia, overrideCategory } from "./services/vision.js";
-import { clearSession, getSession, saveSession } from "./session.js";
+import { clearSession, getSession, saveSession, tgSubject } from "./session.js";
 import type {
   MediaEvidence,
   ReporterIdentity,
@@ -102,7 +102,7 @@ export function createBot(): Telegraf {
       ...(parts[2] ? { nationalId: parts[2] } : {}),
     };
     await saveIdentity(ctx.chat.id, identity);
-    await audit({ type: "identity_set", chatId: ctx.chat.id, userId: ctx.from?.id });
+    await audit({ type: "identity_set", subject: tgSubject(ctx.chat.id), meta: { userId: ctx.from?.id } });
     await ctx.reply(
       `✅ 已記錄身分：${identity.name}（${identity.contact}${identity.nationalId ? `；末四碼 ${identity.nationalId.slice(-4)}` : ""}）。\n稍後送件時將自動帶入報告。`,
     );
@@ -151,7 +151,7 @@ export function createBot(): Telegraf {
       await ctx.reply("尚無待處理檢舉。請先傳送照片或影片。");
       return;
     }
-    await audit({ type: "draft_viewed", chatId: ctx.chat.id, userId: ctx.from?.id });
+    await audit({ type: "draft_viewed", subject: tgSubject(ctx.chat.id), meta: { userId: ctx.from?.id } });
     const { artifact } = session;
     await ctx.reply(
       [
@@ -194,9 +194,8 @@ export function createBot(): Telegraf {
     await saveSession(ctx.chat.id, session);
     await audit({
       type: "send_requested",
-      chatId: ctx.chat.id,
-      userId: ctx.from?.id,
-      meta: { to: target },
+      subject: tgSubject(ctx.chat.id),
+      meta: { userId: ctx.from?.id, to: target },
     });
 
     await ctx.reply(
@@ -221,11 +220,11 @@ export function createBot(): Telegraf {
       return;
     }
     if (!ctx.from || !tryConsumeSend(ctx.from.id)) {
-      await audit({ type: "rate_limited", chatId: ctx.chat.id, userId: ctx.from?.id, meta: { action: "send" } });
+      await audit({ type: "rate_limited", subject: tgSubject(ctx.chat.id), meta: { userId: ctx.from?.id, action: "send" } });
       await ctx.reply(rateLimitMessage("send"));
       return;
     }
-    await audit({ type: "send_confirmed", chatId: ctx.chat.id, userId: ctx.from?.id });
+    await audit({ type: "send_confirmed", subject: tgSubject(ctx.chat.id), meta: { userId: ctx.from?.id } });
     try {
       const result = await sendReport(
         session.artifact,
@@ -234,9 +233,8 @@ export function createBot(): Telegraf {
       );
       await audit({
         type: "sent",
-        chatId: ctx.chat.id,
-        userId: ctx.from?.id,
-        meta: { messageId: result.messageId, accepted: result.accepted },
+        subject: tgSubject(ctx.chat.id),
+        meta: { userId: ctx.from?.id, messageId: result.messageId, accepted: result.accepted },
       });
       await ctx.reply(
         `✅ 已寄出檢舉信\n收件：${result.accepted.join(", ")}\nMessage-ID：${result.messageId}`,
@@ -248,9 +246,8 @@ export function createBot(): Telegraf {
         : `❌ 寄送失敗：${(err as Error).message}`;
       await audit({
         type: "send_failed",
-        chatId: ctx.chat.id,
-        userId: ctx.from?.id,
-        meta: { error: (err as Error).message },
+        subject: tgSubject(ctx.chat.id),
+        meta: { userId: ctx.from?.id, error: (err as Error).message },
       });
       await ctx.reply(msg);
     }
@@ -355,7 +352,7 @@ export function createBot(): Telegraf {
 
   bot.command("cancel", async (ctx) => {
     await clearSession(ctx.chat.id);
-    await audit({ type: "cancelled", chatId: ctx.chat.id, userId: ctx.from?.id });
+    await audit({ type: "cancelled", subject: tgSubject(ctx.chat.id), meta: { userId: ctx.from?.id } });
     await ctx.reply("已取消本次檢舉。");
   });
 
@@ -402,9 +399,8 @@ async function handleAlbum(ctxs: import("telegraf").Context[]): Promise<void> {
   if (!first.from || !tryConsumeAnalysis(first.from.id)) {
     await audit({
       type: "rate_limited",
-      chatId: first.chat.id,
-      userId: first.from?.id,
-      meta: { action: "analysis" },
+      subject: tgSubject(first.chat.id),
+      meta: { userId: first.from?.id, action: "analysis" },
     });
     await first.reply(rateLimitMessage("analysis"));
     return;
@@ -447,9 +443,8 @@ async function handleAlbum(ctxs: import("telegraf").Context[]): Promise<void> {
 
     await audit({
       type: "media_received",
-      chatId: first.chat.id,
-      userId: first.from.id,
-      meta: { count: evidences.length, sha256: evidences.map((e) => e.sha256) },
+      subject: tgSubject(first.chat.id),
+      meta: { userId: first.from.id, count: evidences.length, sha256: evidences.map((e) => e.sha256) },
     });
 
     // resolve address from first evidence with GPS
@@ -467,9 +462,8 @@ async function handleAlbum(ctxs: import("telegraf").Context[]): Promise<void> {
     const analysis = await analyzeMedia(evidences[0]!.filePath, caption);
     await audit({
       type: "analyzed",
-      chatId: first.chat.id,
-      userId: first.from.id,
-      meta: { category: analysis.category, confidence: analysis.confidence },
+      subject: tgSubject(first.chat.id),
+      meta: { userId: first.from.id, category: analysis.category, confidence: analysis.confidence },
     });
 
     const identity = await getIdentity(first.chat.id);
@@ -490,9 +484,8 @@ async function handleAlbum(ctxs: import("telegraf").Context[]): Promise<void> {
     });
     await audit({
       type: "report_built",
-      chatId: first.chat.id,
-      userId: first.from.id,
-      meta: { ok: artifact.compliance.ok, issues: artifact.compliance.issues.length },
+      subject: tgSubject(first.chat.id),
+      meta: { userId: first.from.id, ok: artifact.compliance.ok, issues: artifact.compliance.issues.length },
     });
 
     await first.reply(artifact.markdown, { parse_mode: "Markdown" });

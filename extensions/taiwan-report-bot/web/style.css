@@ -1,0 +1,15 @@
+/* Custom tweaks on top of Tailwind CDN */
+.compliance-ok {
+  background-color: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+}
+.compliance-warn {
+  background-color: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #78350f;
+}
+.tab-btn.active {
+  background-color: rgb(37 99 235);
+  color: white;
+}

@@ -13,13 +13,16 @@ export type AuditEventType =
   | "send_failed"
   | "cancelled"
   | "identity_set"
-  | "rate_limited";
+  | "rate_limited"
+  | "auth_login"
+  | "auth_register"
+  | "auth_logout";
 
 export interface AuditEvent {
   ts: string; // ISO
   type: AuditEventType;
-  chatId: number;
-  userId?: number;
+  /** Generic subject key: `tg:<chatId>` for Telegram, `user:<userId>` for web/desktop. */
+  subject: string;
   meta?: Record<string, unknown>;
 }
 

@@ -1,24 +1,31 @@
 {
   "name": "@openclaw/taiwan-report-bot",
-  "version": "0.1.0",
-  "description": "Taiwan violation reporting Telegram bot (traffic / environment / building / condominium)",
+  "version": "0.2.0",
+  "description": "Taiwan violation reporting Telegram bot + Web UI + Desktop app (traffic / environment / building / condominium)",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
     "start": "node --import tsx src/index.ts",
+    "start:bot": "RUN=bot node --import tsx src/index.ts",
+    "start:api": "RUN=api node --import tsx src/index.ts",
+    "start:all": "RUN=bot,api node --import tsx src/index.ts",
     "dev": "node --import tsx --watch src/index.ts",
+    "desktop": "electron desktop/main.cjs",
     "test": "vitest run"
   },
   "dependencies": {
-    "telegraf": "^4.16.3",
-    "openai": "^4.77.0",
-    "exifr": "^7.1.3",
-    "nodemailer": "^6.9.16",
+    "@hono/node-server": "^1.13.7",
     "dotenv": "^16.4.7",
+    "exifr": "^7.1.3",
+    "hono": "^4.6.14",
+    "nodemailer": "^6.9.16",
+    "openai": "^4.77.0",
+    "telegraf": "^4.16.3",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/nodemailer": "^6.4.17",
+    "electron": "^33.2.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
