@@ -102,11 +102,17 @@ export function checkCompliance(
     // instantaneous → 不額外要求張數/間隔
   }
 
-  // 4) 車牌（交通類）
-  if (!ctx.analysis.identifiers.licensePlate && ctx.analysis.category === "traffic") {
-    issues.push(
-      "⚠ 未辨識出車牌；交通違規檢舉缺車牌時通常不受理。請補上更清晰之照片或用 /address 提供描述。",
-    );
+  // 4) 車牌（交通類）— 需存在 + 需經人工確認
+  if (ctx.analysis.category === "traffic") {
+    if (!ctx.analysis.identifiers.licensePlate) {
+      issues.push(
+        "⚠ 未辨識出車牌；交通違規檢舉缺車牌時通常不受理。請補拍更清晰之車牌特寫，或用 /plate <車牌> 手動輸入。",
+      );
+    } else if (ctx.plateRequiresVerification && !ctx.plateConfirmed) {
+      issues.push(
+        `❗ 車牌「${ctx.analysis.identifiers.licensePlate}」需經您人工核可後始可送件。LPR 引擎報告信心不足或影像有瑕疵（距離/角度/解析度），請用 /plate <車牌> 確認或修正。`,
+      );
+    }
   }
 
   // 5) 地址

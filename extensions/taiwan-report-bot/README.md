@@ -108,7 +108,7 @@ When the API is running, open `http://127.0.0.1:8787/` in any browser for the **
 
 Send 2+ photos as a **Telegram album** (long-press → select multiple → send). The bot buffers them by `media_group_id` and treats them as one report. This is required for continuous-violation traffic cases (e.g. 違停) per 道交 §7-1, which mandates ≥ 2 photos taken ≥ 3 minutes apart.
 
-### License plate recognition (ANPR)
+### License plate recognition (ANPR v2 — anti-hallucination)
 
 Traffic cases run a second-pass commercial-grade Taiwan ANPR engine (`src/services/lpr.ts`) over all available images / video frames after the main violation analysis. The engine enforces MOTC plate rules:
 
@@ -116,9 +116,19 @@ Traffic cases run a second-pass commercial-grade Taiwan ANPR engine (`src/servic
 - Modern 7-character plates exclude the digit `4` in the numeric sequence
 - Format awareness: 7-char (3L-4D), older 6-char (2L-4D / 4D-2L), motorcycle (3L-3D / 2L-3D), EV (`E*-****`), taxi (`T*-****` / `Y*-****`)
 
-Cross-frame verification: when multiple frames are available (album or video), characters are compared across frames to filter transient noise (reflections, motion blur, glare).
+**Hallucination defenses (v2)**:
+- Prompt declares an explicit visually-confusable character table (G↔E/C/6/0/8, M↔N/W/H, 0↔8/6, 9↔0/8/6 …)
+- Forces Top-3 candidate enumeration with per-character alternatives and individual character confidence
+- Capture-quality score (distance × angle × blur × glare × occlusion) caps the final confidence
+- "Cross-frame agreement" trap warning — if all frames come from the same low-resolution capture, the model is instructed NOT to report agreement as verification (that's the same bias agreeing with itself)
+- Post-hoc confidence cap in TypeScript: each severe artifact knocks 0.15 off the ceiling; final confidence ≤ min(model report, quality cap, artifact cap)
+- `requires_human_verification=true` whenever confidence < 0.85, ambiguity detected, or any severe artifact
 
-The engine emits a structured result with `confidence_score`, `is_ambiguous`, `raw_visual_text`, and `detected_artifacts`. If confidence ≥ 0.6 and no `?` placeholders remain, the plate auto-upgrades the main analysis's `identifiers.licensePlate`. Otherwise the original analysis is kept unchanged.
+**Gate**: even when LPR returns a plate, `/send` is blocked until the user explicitly confirms it with `/plate <PLATE>`. The compliance check surfaces this clearly in the report.
+
+**`/plate <PLATE>` command**: confirms or corrects the plate, marks it as user-verified, unlocks `/send`.
+
+**`/lpr` output**: shows the resolved plate, capture quality, Top-3 candidates, per-character uncertainty for any position below 0.85, and whether human verification is required.
 
 ### Video support
 

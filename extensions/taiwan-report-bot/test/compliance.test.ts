@@ -317,4 +317,43 @@ describe("checkCompliance", () => {
     });
     expect(r.ok).toBe(true);
   });
+
+  // ---- 車牌人工核可 gate ----
+
+  it("BLOCKS send when plate requires verification and user hasn't confirmed", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: redLineAnalysis,
+      address: baseAddress,
+      reporter: baseReporter,
+      plateRequiresVerification: true,
+      plateConfirmed: false,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join("\n")).toMatch(/人工核可/);
+    expect(r.issues.join("\n")).toMatch(/\/plate/);
+  });
+
+  it("PASSES when plate is flagged for verification BUT user has confirmed it", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: redLineAnalysis,
+      address: baseAddress,
+      reporter: baseReporter,
+      plateRequiresVerification: true,
+      plateConfirmed: true,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("PASSES when LPR is high-confidence and doesn't need verification", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: redLineAnalysis,
+      address: baseAddress,
+      reporter: baseReporter,
+      plateRequiresVerification: false,
+    });
+    expect(r.ok).toBe(true);
+  });
 });

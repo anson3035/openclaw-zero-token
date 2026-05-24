@@ -108,28 +108,47 @@ export function overrideCategory(
  * so the main pipeline keeps working even if the LPR call is rate-limited
  * or returns malformed JSON.
  */
+export interface EnrichmentResult {
+  analysis: AnalyzedViolation;
+  lpr?: LprResult;
+  /** True if the LPR result is reliable enough to use without user confirmation. */
+  trustworthy: boolean;
+}
+
 export async function enrichPlateWithLpr(
   analysis: AnalyzedViolation,
   imagePaths: string[],
-): Promise<{ analysis: AnalyzedViolation; lpr?: LprResult }> {
+): Promise<EnrichmentResult> {
   if (analysis.category !== "traffic" || imagePaths.length === 0) {
-    return { analysis };
+    return { analysis, trustworthy: false };
   }
   try {
     const hint = analysis.subject || "Unspecified";
     const lpr = await recognizePlate(imagePaths, hint);
+
     const plate = lpr.resolved_plate.license_plate_number;
-    const isClean = plate && !plate.includes("?") && lpr.resolved_plate.confidence_score >= 0.6;
-    if (!isClean) return { analysis, lpr };
+    const requiresReview = lpr.resolved_plate.requires_human_verification === true;
+    const hasPlaceholder = plate.includes("?");
+    // Tightened from 0.6 → 0.85; honest LPR results below this almost always need review.
+    const isHighConfidence = lpr.resolved_plate.confidence_score >= 0.85;
+    const trustworthy = !requiresReview && !hasPlaceholder && isHighConfidence;
+
+    if (!trustworthy) {
+      // Surface the LPR's best guess but do NOT overwrite the identifier
+      // when we don't trust it — caller must ask the user to confirm.
+      return { analysis, lpr, trustworthy: false };
+    }
+
     return {
       analysis: {
         ...analysis,
         identifiers: { ...analysis.identifiers, licensePlate: plate },
       },
       lpr,
+      trustworthy: true,
     };
   } catch (err) {
     console.error("[lpr] enrichment failed:", (err as Error).message);
-    return { analysis };
+    return { analysis, trustworthy: false };
   }
 }

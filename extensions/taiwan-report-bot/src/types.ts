@@ -49,6 +49,17 @@ export interface ReportContext {
   address: ResolvedAddress;
   userNote?: string;
   reporter?: ReporterIdentity;
+  /**
+   * True when the user has explicitly confirmed (or manually corrected) the
+   * license plate via /plate. Required by compliance gate before /send.
+   * If LPR low-confidence and this is false, /send is blocked.
+   */
+  plateConfirmed?: boolean;
+  /**
+   * Whether the most recent LPR pass flagged the plate as needing human
+   * verification (low confidence, ambiguity, or severe artifacts).
+   */
+  plateRequiresVerification?: boolean;
 }
 
 export interface ComplianceCheck {
