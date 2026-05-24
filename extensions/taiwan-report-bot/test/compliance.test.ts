@@ -227,4 +227,94 @@ describe("checkCompliance", () => {
     expect(r.ok).toBe(false);
     expect(r.issues.join("\n")).toMatch(/地址/);
   });
+
+  // ---- §7-1 民眾檢舉適用性 ----
+
+  it("BLOCKS overspeed violation (limited to police enforcement)", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: {
+        category: "traffic",
+        subject: "超速車輛",
+        description: "汽車於市區道路超速",
+        identifiers: { licensePlate: "ABC-1234" },
+        confidence: "high",
+        evidenceGaps: [],
+      },
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join("\n")).toMatch(/不在民眾檢舉適用範圍/);
+  });
+
+  it("BLOCKS DUI report (限警察攔檢)", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: {
+        category: "traffic",
+        subject: "疑似酒駕車輛",
+        description: "駕駛人疑似酒駕",
+        identifiers: { licensePlate: "ABC-1234" },
+        confidence: "high",
+        evidenceGaps: [],
+      },
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join("\n")).toMatch(/不在民眾檢舉適用範圍/);
+  });
+
+  it("BLOCKS no-helmet report", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: {
+        category: "traffic",
+        subject: "機車騎士",
+        description: "機車駕駛未戴安全帽",
+        identifiers: { licensePlate: "ABC-1234" },
+        confidence: "high",
+        evidenceGaps: [],
+      },
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join("\n")).toMatch(/不在民眾檢舉適用範圍/);
+  });
+
+  it("PASSES 闖紅燈 with a single clear photo (moving violation, citizen reportable)", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: {
+        category: "traffic",
+        subject: "汽車",
+        description: "汽車闖紅燈通過路口",
+        identifiers: { licensePlate: "ABC-1234" },
+        confidence: "high",
+        evidenceGaps: [],
+      },
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("PASSES 未禮讓行人 (moving, citizen reportable)", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: {
+        category: "traffic",
+        subject: "汽車",
+        description: "汽車未禮讓行人通過斑馬線",
+        identifiers: { licensePlate: "ABC-1234" },
+        confidence: "high",
+        evidenceGaps: [],
+      },
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(true);
+  });
 });

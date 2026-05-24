@@ -1,34 +1,8 @@
-import type { ComplianceCheck, ReportContext } from "../types.js";
+import { matchLegalCitations } from "../data/legal-rules.js";
+import type { ComplianceCheck, LegalCitation, ReportContext } from "../types.js";
 
 const MIN_PHOTOS_FOR_CONTINUOUS_TRAFFIC = 2;
 const MIN_INTERVAL_MINUTES = 3;
-
-/**
- * 「禁止臨時停車」場所 — 紅線、人行道、騎樓、斑馬線、安全島、消防栓、
- * 消防車出入口、公車站、交岔路口 10 m 內、雙黃線。
- *
- * 法理：道交條例 §55 / §56-1-1 / §56-1-4 — 停一秒即違規，不需證明持續性。
- * 採證要件：單張清晰照片即可（內政部警政署及各縣市警察局採證標準）。
- */
-function isInstantaneousProhibition(description: string): boolean {
-  return /(紅線|人行道|騎樓|斑馬線|安全島|消防栓|消防車出入口|消防通道|公車站|交岔路口|雙黃線)/.test(
-    description,
-  );
-}
-
-/**
- * 「禁止停車（但允許臨時停車）」場所 — 黃線、限時停車區、計時收費停車格。
- *
- * 法理：道交條例 §56-1-2 — 必須證明車輛確實「停車」而非「臨時停車」。
- * 採證要件：≥ 2 張、間隔 ≥ 3 分鐘之照片
- *           （依《道路交通安全規則》§3-10 臨停定義：未滿 3 分鐘）。
- */
-function isContinuousOnlyProhibition(description: string): boolean {
-  if (isInstantaneousProhibition(description)) return false;
-  if (/(黃線|限時停車|計時收費|停車格)/.test(description)) return true;
-  // Generic 違停 with no specific marking mentioned — treat conservatively as continuous.
-  return /(違停|併排)/.test(description);
-}
 
 function intervalMinutes(a: Date | undefined, b: Date | undefined): number | undefined {
   if (!a || !b) return undefined;
@@ -36,29 +10,77 @@ function intervalMinutes(a: Date | undefined, b: Date | undefined): number | und
 }
 
 /**
+ * 從已比對之 citations 推導出本案最低採證要件：
+ * - 任一條 instantaneous → 單張即可
+ * - 否則若有 continuous → 需 ≥ 2 張 + ≥ 3 分鐘
+ * - 否則若有 moving → 動態違規（需錄影／連續多張）
+ * - 都沒有 → 預設 continuous（保守）
+ */
+function deriveEvidenceMode(
+  citations: LegalCitation[],
+): "instantaneous" | "continuous" | "moving" {
+  if (citations.some((c) => c.evidenceMode === "instantaneous")) return "instantaneous";
+  if (citations.some((c) => c.evidenceMode === "continuous")) return "continuous";
+  if (citations.some((c) => c.evidenceMode === "moving")) return "moving";
+  return "continuous";
+}
+
+/**
+ * 檢查 §7-1 民眾檢舉適用性。
+ * 若所有命中之法條皆 reportableByCitizen === false，視為不可檢舉。
+ */
+function checkCitizenReportable(citations: LegalCitation[]): {
+  reportable: boolean;
+  policeOnly: LegalCitation[];
+} {
+  const policeOnly = citations.filter((c) => c.reportableByCitizen === false);
+  const reportable = citations.some((c) => c.reportableByCitizen !== false);
+  return { reportable, policeOnly };
+}
+
+/**
  * Checks the report against Taiwan's reporting rules before sending.
  *
  * Per 道交條例 §7-1: 民眾檢舉須具名。
  *
- * 停車違規舉證要件依場所類別區分：
- * - 禁止臨時停車（紅線/人行道/騎樓 等）: 單張清晰照片即可
- * - 禁止停車但允許臨停（黃線/限時停車區）: 需 ≥ 2 張、間隔 ≥ 3 分鐘
+ * 採證要件依違規類別自動判定（取自命中之 LegalCitation.evidenceMode）。
+ *
+ * Citations 可由呼叫端傳入；若未傳入則自行 lookup。
  */
-export function checkCompliance(ctx: ReportContext): ComplianceCheck {
+export function checkCompliance(
+  ctx: ReportContext,
+  citations?: LegalCitation[],
+): ComplianceCheck {
   const issues: string[] = [];
+  const matchedCitations =
+    citations ?? matchLegalCitations(ctx.analysis.category, ctx.analysis.description);
 
+  // 1) 具名舉發
   if (!ctx.reporter) {
-    issues.push("❗ 未設定檢舉人身分。道交條例 §7-1 規定須具名檢舉，匿名報案不受理。請先用 /identify 設定姓名與聯絡方式。");
+    issues.push(
+      "❗ 未設定檢舉人身分。道交條例 §7-1 規定須具名檢舉，匿名報案不受理。請先用 /identify 設定姓名與聯絡方式。",
+    );
   }
 
+  // 2) §7-1 民眾檢舉適用性
   if (ctx.analysis.category === "traffic") {
-    const desc = ctx.analysis.description;
+    const { reportable, policeOnly } = checkCitizenReportable(matchedCitations);
+    if (!reportable) {
+      const labels = policeOnly.map((c) => c.shortLabel ?? c.article).join("、");
+      issues.push(
+        `❗ 此違規類型（${labels}）不在民眾檢舉適用範圍（道交 §7-1）。請改撥 110 由警員到場稽查，或保留證據至當地警察分局報案。`,
+      );
+    }
+  }
 
-    if (isContinuousOnlyProhibition(desc)) {
-      // 黃線 / 限時停車區 / 一般違停 — 需證明非臨時停車
+  // 3) 採證要件
+  if (ctx.analysis.category === "traffic") {
+    const mode = deriveEvidenceMode(matchedCitations);
+
+    if (mode === "continuous") {
       if (ctx.evidence.length < MIN_PHOTOS_FOR_CONTINUOUS_TRAFFIC) {
         issues.push(
-          `❗ 黃線或一般違停舉發法定需 ${MIN_PHOTOS_FOR_CONTINUOUS_TRAFFIC} 張以上、間隔 ${MIN_INTERVAL_MINUTES} 分鐘之照片，以證明非臨時停車。目前僅 ${ctx.evidence.length} 張。`,
+          `❗ 黃線或一般違停舉發法定需 ${MIN_PHOTOS_FOR_CONTINUOUS_TRAFFIC} 張以上、間隔 ${MIN_INTERVAL_MINUTES} 分鐘之照片以證明非臨時停車。目前僅 ${ctx.evidence.length} 張。`,
         );
       } else {
         const t0 = ctx.evidence[0]?.capturedAt;
@@ -75,13 +97,19 @@ export function checkCompliance(ctx: ReportContext): ComplianceCheck {
         }
       }
     }
-    // 禁止臨時停車場所（紅線、人行道等）— 單張即可，不額外檢查張數/間隔。
+    // moving 違規（闖紅燈、未禮讓行人、蛇行 …）：單張清晰照片可受理；
+    // 實務上多以行車記錄器影片或連續多張為佳，但不在 compliance 強制範圍。
+    // instantaneous → 不額外要求張數/間隔
   }
 
+  // 4) 車牌（交通類）
   if (!ctx.analysis.identifiers.licensePlate && ctx.analysis.category === "traffic") {
-    issues.push("⚠ 未辨識出車牌；交通違規檢舉缺車牌時通常不受理。請補上更清晰之照片或用 /address 提供描述。");
+    issues.push(
+      "⚠ 未辨識出車牌；交通違規檢舉缺車牌時通常不受理。請補上更清晰之照片或用 /address 提供描述。",
+    );
   }
 
+  // 5) 地址
   if (ctx.address.full.startsWith("（未取得地址")) {
     issues.push("⚠ 尚未取得明確地址，請用 /address 補上完整地址。");
   }

@@ -148,10 +148,24 @@ export function buildReport(ctx: ReportContext): ReportArtifact {
   const citations = matchLegalCitations(ctx.analysis.category, ctx.analysis.description);
   const recipient = lookupRecipients(ctx.address.city, ctx.analysis.category);
   const sms = buildSmsArtifact(ctx);
-  const compliance = checkCompliance(ctx);
+  const compliance = checkCompliance(ctx, citations);
 
+  const evidenceModeLabel = (m?: string): string => {
+    if (m === "instantaneous") return "單張即可";
+    if (m === "continuous") return "需 ≥ 2 張、間隔 ≥ 3 分鐘";
+    if (m === "moving") return "動態違規 — 建議錄影或連續多張";
+    return "—";
+  };
+  const reportableTag = (c: { reportableByCitizen?: boolean }): string => {
+    if (c.reportableByCitizen === false) return "❌ 限警察";
+    return "✅ 民眾可檢舉";
+  };
   const citationLines = citations
-    .map((c) => `- **${c.statute} ${c.article}**：${c.penalty}`)
+    .map(
+      (c) => `- **${c.statute} ${c.article}**${c.shortLabel ? `（${c.shortLabel}）` : ""}
+  - 處罰：${c.penalty}
+  - 民眾檢舉：${reportableTag(c)}　·　採證要件：${evidenceModeLabel(c.evidenceMode)}`,
+    )
     .join("\n");
 
   const markdown = `### 違規檢舉報告書

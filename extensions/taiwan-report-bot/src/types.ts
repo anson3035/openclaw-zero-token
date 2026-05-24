@@ -56,10 +56,24 @@ export interface ComplianceCheck {
   issues: string[]; // human-readable blockers / warnings before sending
 }
 
+/**
+ * 採證要件：
+ * - instantaneous: 單張清晰照片即可（紅線、人行道、闖紅燈、騎樓、消防栓、公車站、身障車位…）
+ * - continuous:    需 ≥ 2 張、間隔 ≥ 3 分鐘（黃線、限時收費停車格、一般違停未指明場所）
+ * - moving:        動態違規，需錄影或連續多張（蛇行、未禮讓行人、違規迴轉、超車）
+ */
+export type EvidenceMode = "instantaneous" | "continuous" | "moving";
+
 export interface LegalCitation {
   statute: string;
   article: string;
   penalty: string;
+  shortLabel?: string;
+  /** 是否屬道交條例 §7-1 民眾可檢舉之違規。false = 限警察執行。 */
+  reportableByCitizen?: boolean;
+  /** 是否屬道交條例 §7-2 警察可逕行舉發之違規。 */
+  policeInitiated?: boolean;
+  evidenceMode?: EvidenceMode;
 }
 
 export interface SmsArtifact {
