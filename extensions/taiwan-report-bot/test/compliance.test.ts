@@ -15,11 +15,31 @@ function evidence(at: string): MediaEvidence {
   };
 }
 
-const baseAnalysis = {
+// 黃線 / 一般違停 — 需 ≥2 張、間隔 ≥3 分鐘
+const yellowLineAnalysis = {
+  category: "traffic" as const,
+  subject: "違停轎車",
+  description: "白色轎車違停於黃線",
+  identifiers: { licensePlate: "ABC-1234" },
+  confidence: "high" as const,
+  evidenceGaps: [],
+};
+
+// 紅線 / 人行道 — 單張即可
+const redLineAnalysis = {
   category: "traffic" as const,
   subject: "違停機車",
   description: "機車違停於紅線",
   identifiers: { licensePlate: "ABC-1234" },
+  confidence: "high" as const,
+  evidenceGaps: [],
+};
+
+const sidewalkAnalysis = {
+  category: "traffic" as const,
+  subject: "違停 MPV",
+  description: "Toyota Wish 佔用人行道停車",
+  identifiers: { licensePlate: "BEA-9210" },
   confidence: "high" as const,
   evidenceGaps: [],
 };
@@ -36,53 +56,19 @@ describe("checkCompliance", () => {
   it("blocks when reporter identity is missing", () => {
     const r = checkCompliance({
       evidence: [evidence("2026-05-23T10:00:00+08:00"), evidence("2026-05-23T10:05:00+08:00")],
-      analysis: baseAnalysis,
+      analysis: yellowLineAnalysis,
       address: baseAddress,
     });
     expect(r.ok).toBe(false);
     expect(r.issues.join("\n")).toContain("具名");
   });
 
-  it("blocks continuous-parking traffic with single photo", () => {
+  // ---- 紅線 / 人行道 / 騎樓 等「禁止臨時停車」場所 ----
+
+  it("PASSES 紅線 violation with a single photo (即時違規，無需間隔證據)", () => {
     const r = checkCompliance({
       evidence: [evidence("2026-05-23T10:00:00+08:00")],
-      analysis: baseAnalysis,
-      address: baseAddress,
-      reporter: baseReporter,
-    });
-    expect(r.ok).toBe(false);
-    expect(r.issues.join("\n")).toMatch(/2 張以上/);
-  });
-
-  it("blocks when interval between photos is < 3 minutes", () => {
-    const r = checkCompliance({
-      evidence: [evidence("2026-05-23T10:00:00+08:00"), evidence("2026-05-23T10:01:00+08:00")],
-      analysis: baseAnalysis,
-      address: baseAddress,
-      reporter: baseReporter,
-    });
-    expect(r.ok).toBe(false);
-    expect(r.issues.join("\n")).toMatch(/間隔/);
-  });
-
-  it("warns when multiple photos lack EXIF timestamps", () => {
-    const r = checkCompliance({
-      evidence: [
-        { ...evidence("2026-05-23T10:00:00+08:00"), capturedAt: undefined },
-        { ...evidence("2026-05-23T10:05:00+08:00"), capturedAt: undefined },
-      ],
-      analysis: baseAnalysis,
-      address: baseAddress,
-      reporter: baseReporter,
-    });
-    expect(r.ok).toBe(false);
-    expect(r.issues.join("\n")).toContain("EXIF");
-  });
-
-  it("passes when reporter set + two photos ≥ 3 min apart + plate + address", () => {
-    const r = checkCompliance({
-      evidence: [evidence("2026-05-23T10:00:00+08:00"), evidence("2026-05-23T10:05:00+08:00")],
-      analysis: baseAnalysis,
+      analysis: redLineAnalysis,
       address: baseAddress,
       reporter: baseReporter,
     });
@@ -90,11 +76,113 @@ describe("checkCompliance", () => {
     expect(r.issues).toHaveLength(0);
   });
 
-  it("does not require ≥2 photos for non-continuous traffic violations", () => {
+  it("PASSES 人行道 violation with a single photo", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: sidewalkAnalysis,
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("PASSES 騎樓 violation with a single photo", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: { ...redLineAnalysis, description: "機車違停於騎樓" },
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("PASSES 消防栓 violation with a single photo", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: { ...redLineAnalysis, description: "汽車停放於消防栓 3 公尺內" },
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  // ---- 黃線 / 限時停車 / 一般違停 — 需持續性證據 ----
+
+  it("blocks 黃線 violation with a single photo", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: yellowLineAnalysis,
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join("\n")).toMatch(/2 張以上/);
+  });
+
+  it("blocks 黃線 violation when interval < 3 minutes", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00"), evidence("2026-05-23T10:01:00+08:00")],
+      analysis: yellowLineAnalysis,
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join("\n")).toMatch(/間隔/);
+  });
+
+  it("warns when 黃線 multi-photo lacks EXIF timestamps", () => {
+    const r = checkCompliance({
+      evidence: [
+        { ...evidence("2026-05-23T10:00:00+08:00"), capturedAt: undefined },
+        { ...evidence("2026-05-23T10:05:00+08:00"), capturedAt: undefined },
+      ],
+      analysis: yellowLineAnalysis,
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join("\n")).toContain("EXIF");
+  });
+
+  it("PASSES 黃線 violation with ≥ 2 photos and ≥ 3 min apart", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00"), evidence("2026-05-23T10:05:00+08:00")],
+      analysis: yellowLineAnalysis,
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.issues).toHaveLength(0);
+  });
+
+  it("PASSES generic 違停 (no specific marking) with two timely photos", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00"), evidence("2026-05-23T10:05:00+08:00")],
+      analysis: { ...yellowLineAnalysis, description: "汽車違停於路邊" },
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("blocks generic 違停 with a single photo (conservative default)", () => {
+    const r = checkCompliance({
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: { ...yellowLineAnalysis, description: "汽車違停於路邊" },
+      address: baseAddress,
+      reporter: baseReporter,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join("\n")).toMatch(/2 張以上/);
+  });
+
+  // ---- 其他類型 ----
+
+  it("does not require ≥ 2 photos for non-stopping traffic violations", () => {
     const r = checkCompliance({
       evidence: [evidence("2026-05-23T10:00:00+08:00")],
       analysis: {
-        ...baseAnalysis,
+        ...redLineAnalysis,
         description: "機車闖紅燈通過路口",
       },
       address: baseAddress,
@@ -103,11 +191,11 @@ describe("checkCompliance", () => {
     expect(r.ok).toBe(true);
   });
 
-  it("does not require ≥2 photos for non-traffic categories", () => {
+  it("does not require ≥ 2 photos for non-traffic categories", () => {
     const r = checkCompliance({
       evidence: [evidence("2026-05-23T10:00:00+08:00")],
       analysis: {
-        ...baseAnalysis,
+        ...redLineAnalysis,
         category: "environment",
         description: "路邊隨意亂丟垃圾",
         identifiers: {},
@@ -121,7 +209,7 @@ describe("checkCompliance", () => {
   it("blocks traffic violation without license plate", () => {
     const r = checkCompliance({
       evidence: [evidence("2026-05-23T10:00:00+08:00"), evidence("2026-05-23T10:05:00+08:00")],
-      analysis: { ...baseAnalysis, identifiers: {} },
+      analysis: { ...yellowLineAnalysis, identifiers: {} },
       address: baseAddress,
       reporter: baseReporter,
     });
@@ -131,8 +219,8 @@ describe("checkCompliance", () => {
 
   it("flags missing address placeholder", () => {
     const r = checkCompliance({
-      evidence: [evidence("2026-05-23T10:00:00+08:00"), evidence("2026-05-23T10:05:00+08:00")],
-      analysis: baseAnalysis,
+      evidence: [evidence("2026-05-23T10:00:00+08:00")],
+      analysis: redLineAnalysis,
       address: { full: "（未取得地址，請使用 /address 補上）", source: "user-input" },
       reporter: baseReporter,
     });

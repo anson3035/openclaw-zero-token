@@ -3,8 +3,31 @@ import type { ComplianceCheck, ReportContext } from "../types.js";
 const MIN_PHOTOS_FOR_CONTINUOUS_TRAFFIC = 2;
 const MIN_INTERVAL_MINUTES = 3;
 
-function continuousParkingTerms(description: string): boolean {
-  return /(違停|併排|紅線|黃線|騎樓|人行道停車)/.test(description);
+/**
+ * 「禁止臨時停車」場所 — 紅線、人行道、騎樓、斑馬線、安全島、消防栓、
+ * 消防車出入口、公車站、交岔路口 10 m 內、雙黃線。
+ *
+ * 法理：道交條例 §55 / §56-1-1 / §56-1-4 — 停一秒即違規，不需證明持續性。
+ * 採證要件：單張清晰照片即可（內政部警政署及各縣市警察局採證標準）。
+ */
+function isInstantaneousProhibition(description: string): boolean {
+  return /(紅線|人行道|騎樓|斑馬線|安全島|消防栓|消防車出入口|消防通道|公車站|交岔路口|雙黃線)/.test(
+    description,
+  );
+}
+
+/**
+ * 「禁止停車（但允許臨時停車）」場所 — 黃線、限時停車區、計時收費停車格。
+ *
+ * 法理：道交條例 §56-1-2 — 必須證明車輛確實「停車」而非「臨時停車」。
+ * 採證要件：≥ 2 張、間隔 ≥ 3 分鐘之照片
+ *           （依《道路交通安全規則》§3-10 臨停定義：未滿 3 分鐘）。
+ */
+function isContinuousOnlyProhibition(description: string): boolean {
+  if (isInstantaneousProhibition(description)) return false;
+  if (/(黃線|限時停車|計時收費|停車格)/.test(description)) return true;
+  // Generic 違停 with no specific marking mentioned — treat conservatively as continuous.
+  return /(違停|併排)/.test(description);
 }
 
 function intervalMinutes(a: Date | undefined, b: Date | undefined): number | undefined {
@@ -14,8 +37,12 @@ function intervalMinutes(a: Date | undefined, b: Date | undefined): number | und
 
 /**
  * Checks the report against Taiwan's reporting rules before sending.
- * Per 道交條例 §7-1: 民眾檢舉須具名；持續性違規（如違停）需間隔 3 分鐘以上、
- * 且包含可辨識車牌之兩張以上照片。
+ *
+ * Per 道交條例 §7-1: 民眾檢舉須具名。
+ *
+ * 停車違規舉證要件依場所類別區分：
+ * - 禁止臨時停車（紅線/人行道/騎樓 等）: 單張清晰照片即可
+ * - 禁止停車但允許臨停（黃線/限時停車區）: 需 ≥ 2 張、間隔 ≥ 3 分鐘
  */
 export function checkCompliance(ctx: ReportContext): ComplianceCheck {
   const issues: string[] = [];
@@ -24,28 +51,31 @@ export function checkCompliance(ctx: ReportContext): ComplianceCheck {
     issues.push("❗ 未設定檢舉人身分。道交條例 §7-1 規定須具名檢舉，匿名報案不受理。請先用 /identify 設定姓名與聯絡方式。");
   }
 
-  if (
-    ctx.analysis.category === "traffic" &&
-    continuousParkingTerms(ctx.analysis.description)
-  ) {
-    if (ctx.evidence.length < MIN_PHOTOS_FOR_CONTINUOUS_TRAFFIC) {
-      issues.push(
-        `❗ 持續性違規（如違停）法定需 ${MIN_PHOTOS_FOR_CONTINUOUS_TRAFFIC} 張以上、間隔 ${MIN_INTERVAL_MINUTES} 分鐘之照片。目前僅 ${ctx.evidence.length} 張。請補拍後傳送照片群組（album）。`,
-      );
-    } else {
-      const t0 = ctx.evidence[0]?.capturedAt;
-      const tLast = ctx.evidence[ctx.evidence.length - 1]?.capturedAt;
-      const gap = intervalMinutes(t0, tLast);
-      if (gap === undefined) {
+  if (ctx.analysis.category === "traffic") {
+    const desc = ctx.analysis.description;
+
+    if (isContinuousOnlyProhibition(desc)) {
+      // 黃線 / 限時停車區 / 一般違停 — 需證明非臨時停車
+      if (ctx.evidence.length < MIN_PHOTOS_FOR_CONTINUOUS_TRAFFIC) {
         issues.push(
-          `⚠ 多張照片缺少 EXIF 時間戳記，無法證明違規持續 ${MIN_INTERVAL_MINUTES} 分鐘以上，可能被退案。`,
+          `❗ 黃線或一般違停舉發法定需 ${MIN_PHOTOS_FOR_CONTINUOUS_TRAFFIC} 張以上、間隔 ${MIN_INTERVAL_MINUTES} 分鐘之照片，以證明非臨時停車。目前僅 ${ctx.evidence.length} 張。`,
         );
-      } else if (gap < MIN_INTERVAL_MINUTES) {
-        issues.push(
-          `❗ 照片時間間隔僅 ${gap.toFixed(1)} 分鐘，法定需 ≥ ${MIN_INTERVAL_MINUTES} 分鐘。`,
-        );
+      } else {
+        const t0 = ctx.evidence[0]?.capturedAt;
+        const tLast = ctx.evidence[ctx.evidence.length - 1]?.capturedAt;
+        const gap = intervalMinutes(t0, tLast);
+        if (gap === undefined) {
+          issues.push(
+            `⚠ 多張照片缺少 EXIF 時間戳記，無法證明違規持續 ${MIN_INTERVAL_MINUTES} 分鐘以上，可能被退案。`,
+          );
+        } else if (gap < MIN_INTERVAL_MINUTES) {
+          issues.push(
+            `❗ 照片時間間隔僅 ${gap.toFixed(1)} 分鐘，法定需 ≥ ${MIN_INTERVAL_MINUTES} 分鐘。`,
+          );
+        }
       }
     }
+    // 禁止臨時停車場所（紅線、人行道等）— 單張即可，不額外檢查張數/間隔。
   }
 
   if (!ctx.analysis.identifiers.licensePlate && ctx.analysis.category === "traffic") {
