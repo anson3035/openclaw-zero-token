@@ -10,9 +10,16 @@ export interface MediaEvidence {
   mimeType: string;
   capturedAt?: Date;
   gps?: GeoPoint;
+  sha256: string;
   source: "telegram";
   sourceMessageId: number;
   sourceChatId: number;
+}
+
+export interface ReporterIdentity {
+  name: string;
+  contact: string; // phone or email
+  nationalId?: string; // optional 身分證字號
 }
 
 export interface AnalyzedViolation {
@@ -37,10 +44,16 @@ export interface ResolvedAddress {
 }
 
 export interface ReportContext {
-  evidence: MediaEvidence;
+  evidence: MediaEvidence[]; // primary at [0]; additional for continuous-violation evidence
   analysis: AnalyzedViolation;
   address: ResolvedAddress;
   userNote?: string;
+  reporter?: ReporterIdentity;
+}
+
+export interface ComplianceCheck {
+  ok: boolean;
+  issues: string[]; // human-readable blockers / warnings before sending
 }
 
 export interface LegalCitation {
@@ -64,4 +77,5 @@ export interface ReportArtifact {
   onlineFormUrl?: string;
   sms?: SmsArtifact;
   legalCitations: LegalCitation[];
+  compliance: ComplianceCheck;
 }

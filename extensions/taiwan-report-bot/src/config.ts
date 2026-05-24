@@ -16,6 +16,7 @@ const envSchema = z.object({
   SMTP_FROM: z.string().optional(),
   NOMINATIM_USER_AGENT: z.string().default("taiwan-report-bot/0.1"),
   EVIDENCE_DIR: z.string().default("./evidence"),
+  DATA_DIR: z.string().default("./data"),
   ALLOWED_USER_IDS: z
     .string()
     .optional()

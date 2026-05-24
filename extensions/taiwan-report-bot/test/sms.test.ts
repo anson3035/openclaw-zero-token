@@ -1,19 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { normalizePhoneE164 } from "../src/data/authorities.js";
 import { buildReport, buildSmsBody } from "../src/services/report.js";
-import type { ReportContext } from "../src/types.js";
+import type { MediaEvidence, ReportContext } from "../src/types.js";
+
+function evidence(overrides: Partial<MediaEvidence> = {}): MediaEvidence {
+  return {
+    filePath: "/tmp/test.jpg",
+    mimeType: "image/jpeg",
+    capturedAt: new Date("2026-05-23T10:00:00+08:00"),
+    gps: { lat: 25.0478, lon: 121.5319 },
+    sha256: "b".repeat(64),
+    source: "telegram",
+    sourceMessageId: 1,
+    sourceChatId: 100,
+    ...overrides,
+  };
+}
 
 function makeCtx(overrides: Partial<ReportContext> = {}): ReportContext {
   return {
-    evidence: {
-      filePath: "/tmp/test.jpg",
-      mimeType: "image/jpeg",
-      capturedAt: new Date("2026-05-23T10:00:00+08:00"),
-      gps: { lat: 25.0478, lon: 121.5319 },
-      source: "telegram",
-      sourceMessageId: 1,
-      sourceChatId: 100,
-    },
+    evidence: [evidence()],
     analysis: {
       category: "traffic",
       subject: "黑色機車車牌 ABC-1234",
@@ -27,6 +33,7 @@ function makeCtx(overrides: Partial<ReportContext> = {}): ReportContext {
       city: "台北市",
       source: "exif-geocode",
     },
+    reporter: { name: "王小明", contact: "0912-345678" },
     ...overrides,
   };
 }

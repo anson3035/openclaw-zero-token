@@ -10,7 +10,7 @@ export class MailerNotConfiguredError extends Error {
 
 export async function sendReport(
   artifact: ReportArtifact,
-  attachmentPath: string,
+  attachmentPaths: string[],
   overrideRecipient?: string,
 ): Promise<{ messageId: string; accepted: string[] }> {
   if (!smtpConfigured()) throw new MailerNotConfiguredError();
@@ -29,7 +29,7 @@ export async function sendReport(
     to,
     subject: artifact.emailSubject,
     text: artifact.emailBody,
-    attachments: [{ path: attachmentPath }],
+    attachments: attachmentPaths.map((p) => ({ path: p })),
   });
 
   return {
