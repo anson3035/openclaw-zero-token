@@ -247,7 +247,7 @@ class PhotoPanel(ctk.CTkFrame):
 
         self.canvas = tk.Canvas(self, bg=BG_SUNKEN, highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True, padx=10, pady=(6, 6))
-        self.canvas.bind("<Configure>", lambda _e: self._draw())
+        self.canvas.bind("<Configure>", lambda _e: self._render_scene())
 
         footer = ctk.CTkFrame(self, fg_color="transparent", height=28)
         footer.pack(fill="x", padx=14, pady=(0, 10))
@@ -260,7 +260,7 @@ class PhotoPanel(ctk.CTkFrame):
                      font=MONO_S, text_color=TEXT_DIM,
                      anchor="e").pack(side="right")
 
-    def _draw(self) -> None:
+    def _render_scene(self) -> None:
         c = self.canvas
         c.delete("all")
         w, h = c.winfo_width(), c.winfo_height()
@@ -335,7 +335,7 @@ class MapPanel(ctk.CTkFrame):
 
         self.canvas = tk.Canvas(self, bg=BG_SUNKEN, highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True, padx=10, pady=(6, 6))
-        self.canvas.bind("<Configure>", lambda _e: self._draw())
+        self.canvas.bind("<Configure>", lambda _e: self._render_map())
 
         readout = ctk.CTkFrame(self, fg_color="transparent")
         readout.pack(fill="x", padx=14, pady=(0, 10))
@@ -356,7 +356,7 @@ class MapPanel(ctk.CTkFrame):
         self._pulse_phase = 0.0
         self._pulse()
 
-    def _draw(self) -> None:
+    def _render_map(self) -> None:
         c = self.canvas
         c.delete("map")
         w, h = c.winfo_width(), c.winfo_height()
