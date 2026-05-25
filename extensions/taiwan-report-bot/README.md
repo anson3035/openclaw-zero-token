@@ -108,7 +108,7 @@ When the API is running, open `http://127.0.0.1:8787/` in any browser for the **
 
 Send 2+ photos as a **Telegram album** (long-press → select multiple → send). The bot buffers them by `media_group_id` and treats them as one report. This is required for continuous-violation traffic cases (e.g. 違停) per 道交 §7-1, which mandates ≥ 2 photos taken ≥ 3 minutes apart.
 
-### License plate recognition (ANPR v3 — two-pass + MOTC validation)
+### License plate recognition (ANPR v4 — two-pass + MOTC + cross-engine vote)
 
 Traffic cases run a second-pass commercial-grade Taiwan ANPR engine (`src/services/lpr.ts`) over all available images / video frames after the main violation analysis. The engine enforces MOTC plate rules:
 
@@ -130,7 +130,14 @@ Traffic cases run a second-pass commercial-grade Taiwan ANPR engine (`src/servic
 - **MOTC pattern validation** (`src/services/plate-validator.ts`): a plate that satisfies the issuance rules (no I/O, no digit-4 in modern 7-char numerics, valid format / EV / taxi prefix) earns a +0.10 boost. A plate that VIOLATES the rules (likely OCR hallucination) is multiplied by 0.5 and forced into requires_human_verification.
 - **Short-circuit**: Pass-1 alone is accepted when it already reports ≥ 0.85, saving the second OpenAI call.
 
-**Gate**: even when LPR returns a plate, `/send` is blocked until the user explicitly confirms it with `/plate <PLATE>` — unless the pipeline reaches ≥ 0.85 final confidence (agreement + MOTC valid). The compliance check surfaces this clearly in the report.
+**Cross-engine voting (v4 — optional Pass-3)**: when `GEMINI_API_KEY` is set in addition to `OPENAI_API_KEY`, the pipeline runs a third pass using a `RecognitionDispatcher` (`src/services/recognition-engine/`) that calls OpenAI and Gemini **in parallel** on the cropped+upscaled image. Because the two providers have **different training data and different visual architectures**, agreement between them is REAL independent verification (unlike re-running the same model). Boost factors:
+- All providers agree → confidence × 1.2 (capped at 0.99)
+- Vote overrides pipeline read when vote winners differ from pipeline winner
+- Providers split (no majority) → confidence × 0.7 + forced human verification
+
+The dispatcher is provider-agnostic (`PlateRecognizer` interface), so new providers (Claude Vision, Qwen-VL, local PaddleOCR sidecar) plug in with a single `register()` call.
+
+**Gate**: even when LPR returns a plate, `/send` is blocked until the user explicitly confirms it with `/plate <PLATE>` — unless the pipeline reaches ≥ 0.85 final confidence (agreement + MOTC valid + optional vote boost). The compliance check surfaces this clearly in the report.
 
 **`/plate <PLATE>` command**: confirms or corrects the plate, marks it as user-verified, unlocks `/send`.
 

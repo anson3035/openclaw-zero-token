@@ -185,12 +185,25 @@ export function createBot(): Telegraf {
             `  ${i + 1}. \`${c.license_plate_number}\` — ${(c.joint_confidence * 100).toFixed(0)}%  · ${c.reasoning}`,
         );
 
+      const voteLines: string[] = [];
+      if (pipe.vote) {
+        voteLines.push("*跨引擎投票 (Pass-3)*：");
+        voteLines.push(`  • 一致性：${pipe.vote.agreement}  ·  ${pipe.vote.votes.length} 個 provider 並行`);
+        for (const v of pipe.vote.votes) {
+          const flag =
+            v.status === "success" ? "✅" : v.status === "low_confidence" ? "⚠" : "❌";
+          voteLines.push(
+            `  ${flag} ${v.provider}：\`${v.text || "(無讀數)"}\` (${(v.confidence * 100).toFixed(0)}%, ${v.latencyMs} ms)`,
+          );
+        }
+      }
+
       const reply = [
-        "📋 *車牌辨識結果（ANPR v3 — 兩階段精讀）*",
+        "📋 *車牌辨識結果（ANPR v4 — 兩階段 + 跨引擎投票）*",
         "",
         `*首選車牌*：\`${lpr.resolved_plate.license_plate_number}\``,
         `*最終信心*：${(conf * 100).toFixed(0)}%${cap !== undefined ? `  (capture quality: ${(cap * 100).toFixed(0)}%)` : ""}`,
-        `*Pipeline*：${pipe.passes} pass${pipe.passes > 1 ? "es" : ""} · agreement=${pipe.agreement ? "✅" : "❌"} · MOTC=${pipe.motcValid ? "✅ valid" : "❌ INVALID"}`,
+        `*Pipeline*：${pipe.passes} pass${pipe.passes > 1 ? "es" : ""} · agreement=${pipe.agreement ? "✅" : "❌"} · MOTC=${pipe.motcValid ? "✅ valid" : "❌ INVALID"}${pipe.vote ? ` · vote=${pipe.vote.agreement}` : ""}`,
         `*車牌類型*：${lpr.analysis.plate_type}`,
         `*影像瑕疵*：${lpr.analysis.detected_artifacts.join("、") || "none"}`,
         `*原始 OCR*：\`${lpr.analysis.raw_visual_text}\``,
@@ -201,6 +214,8 @@ export function createBot(): Telegraf {
         lowCharLines.length > 0 ? "*字元級不確定性*：" : "",
         ...lowCharLines,
         "",
+        ...voteLines,
+        voteLines.length > 0 ? "" : undefined,
         "*Pipeline 提升軌跡*：",
         ...pipe.notes.map((n) => `  • ${n}`),
         "",
@@ -208,7 +223,7 @@ export function createBot(): Telegraf {
           ? "❗ *仍需您人工核可* — 請用 `/plate <車牌>` 確認或修正後再 /send"
           : "✅ 信心充足，可直接送件",
       ]
-        .filter((s) => s !== "")
+        .filter((s) => s !== "" && s !== undefined)
         .join("\n");
       await ctx.reply(reply, { parse_mode: "Markdown" });
     } catch (err) {

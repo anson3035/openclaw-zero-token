@@ -5,6 +5,9 @@ const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(10, "TELEGRAM_BOT_TOKEN required"),
   OPENAI_API_KEY: z.string().min(10, "OPENAI_API_KEY required"),
   OPENAI_MODEL: z.string().default("gpt-4o"),
+  // Gemini 為選用的第二車牌辨識 provider；設定後啟用跨引擎投票
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default("gemini-1.5-flash"),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().optional(),
   SMTP_SECURE: z

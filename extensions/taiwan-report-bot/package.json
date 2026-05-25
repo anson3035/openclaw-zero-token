@@ -14,6 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@hono/node-server": "^1.13.7",
     "dotenv": "^16.4.7",
     "exifr": "^7.1.3",
