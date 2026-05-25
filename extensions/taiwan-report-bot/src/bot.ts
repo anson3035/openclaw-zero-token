@@ -7,6 +7,7 @@ import { readExif } from "./services/exif.js";
 import { reverseGeocode, parseUserAddress } from "./services/geocoding.js";
 import { recognizePlate } from "./services/lpr.js";
 import { runLprPipeline } from "./services/lpr-pipeline.js";
+import { checkBusStop10mViolation } from "./services/tdx.js";
 import { MailerNotConfiguredError, sendReport } from "./services/mailer.js";
 import {
   rateLimitMessage,
@@ -578,6 +579,26 @@ async function handleAlbum(ctxs: import("telegraf").Context[]): Promise<void> {
       };
     }
 
+    // TDX bus-stop proximity check — if a vehicle is parked within 10 m of
+    // a registered bus stop, that triggers 道交 §56-1-4 第4款 independently.
+    // We capture it as a userNote suffix so the legal-rules matcher picks
+    // it up and the report cites the new ground.
+    let busStopNote = "";
+    if (withGps?.gps && address.city) {
+      try {
+        const nearby = await checkBusStop10mViolation(
+          address.city,
+          withGps.gps.lat,
+          withGps.gps.lon,
+        );
+        if (nearby) {
+          busStopNote = `（TDX 資料庫比對：距「${nearby.name}」公車招呼站 ${nearby.distanceMeters.toFixed(1)} m，10 m 內停車違反道交 §56-1-4 第 4 款）`;
+        }
+      } catch (err) {
+        console.error("[tdx] check failed:", (err as Error).message);
+      }
+    }
+
     // For analysis we need image bytes. If the primary evidence is a video,
     // extract a middle frame and use that for the violation classifier.
     let primaryForAnalysis = evidences[0]!.filePath;
@@ -600,6 +621,14 @@ async function handleAlbum(ctxs: import("telegraf").Context[]): Promise<void> {
 
     // analyze using the primary frame
     let analysis = await analyzeMedia(primaryForAnalysis, caption);
+    // Inject TDX-confirmed bus-stop fact into description so the legal-rules
+    // matcher picks up §56-1-4 第4款 (公車招呼站 10 m 內停車) automatically.
+    if (busStopNote && analysis.category === "traffic") {
+      analysis = {
+        ...analysis,
+        description: `${analysis.description}；經 TDX 確認位於公車招呼站 10 公尺內。`,
+      };
+    }
     await audit({
       type: "analyzed",
       subject: tgSubject(first.chat.id),
@@ -626,7 +655,7 @@ async function handleAlbum(ctxs: import("telegraf").Context[]): Promise<void> {
       evidence: evidences,
       analysis,
       address,
-      ...(caption ? { userNote: caption } : {}),
+      ...(caption || busStopNote ? { userNote: [caption, busStopNote].filter(Boolean).join("\n") } : {}),
       ...(identity ? { reporter: identity } : {}),
       plateConfirmed: false,
       plateRequiresVerification,

@@ -159,6 +159,16 @@ Current rewardable categories (as of 2026):
 
 > ⚠ 估算金額依各縣市辦法不同，且須查獲屬實並完成裁罰後始能核發。請以當地環保局公告為準。
 
+### TDX integration (location evidence enhancer)
+
+There is **no public Taiwan API for plate-to-owner lookup** — individual plate queries are restricted to police via the closed 監理電子閘門 due to 個資法. What IS open is transport infrastructure data via **TDX (Transport Data eXchange, transportdata.tw)**, which we use to add real, independent evidence to the violation report:
+
+| Check | What it adds |
+|---|---|
+| Bus-stop proximity (radius ≤ 10 m) | Auto-fires 道交 §56-1-4 第 4 款 (公車招呼站 10 公尺內停車) when GPS coords are inside a registered TDX bus stop's 10 m circle. The legal-rules matcher then picks it up and includes it in the report's law citations. |
+
+Setup is optional — leave `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET` blank for anonymous (rate-limited) mode, or register a free dev account at [tdx.transportdata.tw/register](https://tdx.transportdata.tw/register) for production use. If TDX fails for any reason (down, rate-limited, no GPS), the pipeline degrades silently — the original analysis is kept and no false-positive citations are added.
+
 ### Compliance gate
 
 Before `/send` will dispatch, the report must pass a compliance check covering:

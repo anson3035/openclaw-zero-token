@@ -15,6 +15,10 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
   NOMINATIM_USER_AGENT: z.string().default("taiwan-report-bot/0.1"),
+  // TDX (transportdata.tw) credentials — optional. Without these the
+  // service operates in anonymous mode (lower rate limit).
+  TDX_CLIENT_ID: z.string().optional(),
+  TDX_CLIENT_SECRET: z.string().optional(),
   EVIDENCE_DIR: z.string().default("./evidence"),
   DATA_DIR: z.string().default("./data"),
   ALLOWED_USER_IDS: z
