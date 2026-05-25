@@ -6,6 +6,15 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 const net = require("node:net");
 
+// Chromium refuses to launch its renderer sandbox under uid 0 (Docker /
+// CI containers). In production builds users are non-root, so this is
+// a no-op there.
+if (process.getuid && process.getuid() === 0) {
+  app.commandLine.appendSwitch("no-sandbox");
+  app.commandLine.appendSwitch("disable-gpu");
+  app.commandLine.appendSwitch("disable-dev-shm-usage");
+}
+
 const PORT = Number(process.env.HTTP_PORT || 8787);
 let apiProc = null;
 
