@@ -6,6 +6,7 @@ import { audit } from "./services/audit.js";
 import { readExif } from "./services/exif.js";
 import { reverseGeocode, parseUserAddress } from "./services/geocoding.js";
 import { recognizePlate } from "./services/lpr.js";
+import { runLprPipeline } from "./services/lpr-pipeline.js";
 import { MailerNotConfiguredError, sendReport } from "./services/mailer.js";
 import {
   rateLimitMessage,
@@ -160,9 +161,10 @@ export function createBot(): Telegraf {
       await ctx.reply("⚠ 本次案件無可分析之圖片（僅含影片時請先重新上傳，系統會自動抽幀）。");
       return;
     }
-    await ctx.reply(`🔍 商業級車牌辨識中（${imagePaths.length} 張影像）…`);
+    await ctx.reply(`🔍 商業級車牌辨識中（${imagePaths.length} 張影像，2-pass + MOTC 驗證）…`);
     try {
-      const lpr = await recognizePlate(imagePaths, session.ctx.analysis.subject || "Unspecified");
+      const pipe = await runLprPipeline(imagePaths, session.ctx.analysis.subject || "Unspecified");
+      const lpr = pipe.lpr;
       const conf = lpr.resolved_plate.confidence_score;
       const cap = lpr.analysis.capture_quality;
       const candidates = lpr.candidates ?? [];
@@ -183,10 +185,11 @@ export function createBot(): Telegraf {
         );
 
       const reply = [
-        "📋 *車牌辨識結果（ANPR v2）*",
+        "📋 *車牌辨識結果（ANPR v3 — 兩階段精讀）*",
         "",
         `*首選車牌*：\`${lpr.resolved_plate.license_plate_number}\``,
-        `*信心分數*：${(conf * 100).toFixed(0)}%${cap !== undefined ? `  (capture quality: ${(cap * 100).toFixed(0)}%)` : ""}`,
+        `*最終信心*：${(conf * 100).toFixed(0)}%${cap !== undefined ? `  (capture quality: ${(cap * 100).toFixed(0)}%)` : ""}`,
+        `*Pipeline*：${pipe.passes} pass${pipe.passes > 1 ? "es" : ""} · agreement=${pipe.agreement ? "✅" : "❌"} · MOTC=${pipe.motcValid ? "✅ valid" : "❌ INVALID"}`,
         `*車牌類型*：${lpr.analysis.plate_type}`,
         `*影像瑕疵*：${lpr.analysis.detected_artifacts.join("、") || "none"}`,
         `*原始 OCR*：\`${lpr.analysis.raw_visual_text}\``,
@@ -197,8 +200,11 @@ export function createBot(): Telegraf {
         lowCharLines.length > 0 ? "*字元級不確定性*：" : "",
         ...lowCharLines,
         "",
+        "*Pipeline 提升軌跡*：",
+        ...pipe.notes.map((n) => `  • ${n}`),
+        "",
         lpr.resolved_plate.requires_human_verification
-          ? "❗ *需要您人工核可* — 請用 `/plate <車牌>` 確認或修正後再 /send"
+          ? "❗ *仍需您人工核可* — 請用 `/plate <車牌>` 確認或修正後再 /send"
           : "✅ 信心充足，可直接送件",
       ]
         .filter((s) => s !== "")

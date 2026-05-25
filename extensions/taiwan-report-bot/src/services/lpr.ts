@@ -59,6 +59,10 @@ You must explicitly list these alternatives for any character that is not pin-sh
    - is_ambiguous=true, OR
    - top-2 candidates differ by less than 0.20 in probability, OR
    - any artifact severity ≥ 0.5.
+8. **Bounding box**: report the plate's location as normalized 0..1 coordinates
+   {x, y, w, h} where (x, y) is the top-left of the plate region and (w, h)
+   is its width and height as fractions of the full image. This enables the
+   pipeline to crop + upscale + re-read for higher confidence.
 
 # Honesty Rules
 - DO NOT inflate confidence to please the user. If you can only read 4 of 7 characters clearly, you cannot give 0.8 confidence.
@@ -75,6 +79,7 @@ Return a raw JSON object, no markdown. Schema:
     "capture_quality": 0.42,
     "plate_type": "Modern 7-Character / Old 6-Character / Motorcycle / Unknown",
     "raw_visual_text": "the uncorrected text directly read from the image, position by position",
+    "plate_bbox": { "x": 0.42, "y": 0.55, "w": 0.18, "h": 0.06 },
     "per_character": [
       { "position": 1, "primary": "B", "alternatives": ["8", "R"], "confidence": 0.9 },
       { "position": 2, "primary": "G", "alternatives": ["E", "C", "6"], "confidence": 0.55 }
@@ -114,6 +119,13 @@ const candidateSchema = z.object({
   reasoning: z.string(),
 });
 
+const bboxSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  w: z.number().min(0).max(1),
+  h: z.number().min(0).max(1),
+});
+
 export const lprResultSchema = z.object({
   analysis: z.object({
     localization_success: z.boolean(),
@@ -121,6 +133,7 @@ export const lprResultSchema = z.object({
     capture_quality: z.number().min(0).max(1).optional(),
     plate_type: z.string(),
     raw_visual_text: z.string(),
+    plate_bbox: bboxSchema.optional(),
     per_character: z.array(perCharacterSchema).optional(),
   }),
   candidates: z.array(candidateSchema).optional(),

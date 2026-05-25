@@ -108,7 +108,7 @@ When the API is running, open `http://127.0.0.1:8787/` in any browser for the **
 
 Send 2+ photos as a **Telegram album** (long-press → select multiple → send). The bot buffers them by `media_group_id` and treats them as one report. This is required for continuous-violation traffic cases (e.g. 違停) per 道交 §7-1, which mandates ≥ 2 photos taken ≥ 3 minutes apart.
 
-### License plate recognition (ANPR v2 — anti-hallucination)
+### License plate recognition (ANPR v3 — two-pass + MOTC validation)
 
 Traffic cases run a second-pass commercial-grade Taiwan ANPR engine (`src/services/lpr.ts`) over all available images / video frames after the main violation analysis. The engine enforces MOTC plate rules:
 
@@ -124,7 +124,13 @@ Traffic cases run a second-pass commercial-grade Taiwan ANPR engine (`src/servic
 - Post-hoc confidence cap in TypeScript: each severe artifact knocks 0.15 off the ceiling; final confidence ≤ min(model report, quality cap, artifact cap)
 - `requires_human_verification=true` whenever confidence < 0.85, ambiguity detected, or any severe artifact
 
-**Gate**: even when LPR returns a plate, `/send` is blocked until the user explicitly confirms it with `/plate <PLATE>`. The compliance check surfaces this clearly in the report.
+**Confidence boosters (v3)**:
+- **Two-pass pipeline** (`src/services/lpr-pipeline.ts`): Pass-1 reads the full image and reports a `plate_bbox`; the pipeline crops to that bbox + 4× upscales + sharpens + normalises contrast (`src/services/image-ops.ts` via sharp/libvips); Pass-2 re-reads on the cropped+zoomed image. This is REAL independent verification (different visual input) rather than the same model seeing the same pixels twice.
+- **Agreement boost**: when Pass-1 and Pass-2 agree, the resolved plate's confidence is multiplied by 1.5 (capped at 0.95). A correct read that initially scored 0.45 now climbs to ~0.68; one that scored 0.6 climbs to 0.9 (high confidence, auto-send unlocked).
+- **MOTC pattern validation** (`src/services/plate-validator.ts`): a plate that satisfies the issuance rules (no I/O, no digit-4 in modern 7-char numerics, valid format / EV / taxi prefix) earns a +0.10 boost. A plate that VIOLATES the rules (likely OCR hallucination) is multiplied by 0.5 and forced into requires_human_verification.
+- **Short-circuit**: Pass-1 alone is accepted when it already reports ≥ 0.85, saving the second OpenAI call.
+
+**Gate**: even when LPR returns a plate, `/send` is blocked until the user explicitly confirms it with `/plate <PLATE>` — unless the pipeline reaches ≥ 0.85 final confidence (agreement + MOTC valid). The compliance check surfaces this clearly in the report.
 
 **`/plate <PLATE>` command**: confirms or corrects the plate, marks it as user-verified, unlocks `/send`.
 

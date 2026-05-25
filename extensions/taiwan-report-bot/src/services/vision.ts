@@ -3,7 +3,8 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { loadConfig } from "../config.js";
 import type { AnalyzedViolation, ViolationCategory } from "../types.js";
-import { recognizePlate, type LprResult } from "./lpr.js";
+import { runLprPipeline, type PipelineResult } from "./lpr-pipeline.js";
+import type { LprResult } from "./lpr.js";
 
 let cachedClient: OpenAI | undefined;
 function client(): OpenAI {
@@ -111,6 +112,7 @@ export function overrideCategory(
 export interface EnrichmentResult {
   analysis: AnalyzedViolation;
   lpr?: LprResult;
+  pipeline?: PipelineResult;
   /** True if the LPR result is reliable enough to use without user confirmation. */
   trustworthy: boolean;
 }
@@ -124,19 +126,17 @@ export async function enrichPlateWithLpr(
   }
   try {
     const hint = analysis.subject || "Unspecified";
-    const lpr = await recognizePlate(imagePaths, hint);
+    const pipeline = await runLprPipeline(imagePaths, hint);
+    const lpr = pipeline.lpr;
 
     const plate = lpr.resolved_plate.license_plate_number;
     const requiresReview = lpr.resolved_plate.requires_human_verification === true;
     const hasPlaceholder = plate.includes("?");
-    // Tightened from 0.6 → 0.85; honest LPR results below this almost always need review.
-    const isHighConfidence = lpr.resolved_plate.confidence_score >= 0.85;
+    const isHighConfidence = pipeline.finalConfidence >= 0.85;
     const trustworthy = !requiresReview && !hasPlaceholder && isHighConfidence;
 
     if (!trustworthy) {
-      // Surface the LPR's best guess but do NOT overwrite the identifier
-      // when we don't trust it — caller must ask the user to confirm.
-      return { analysis, lpr, trustworthy: false };
+      return { analysis, lpr, pipeline, trustworthy: false };
     }
 
     return {
@@ -145,6 +145,7 @@ export async function enrichPlateWithLpr(
         identifiers: { ...analysis.identifiers, licensePlate: plate },
       },
       lpr,
+      pipeline,
       trustworthy: true,
     };
   } catch (err) {
