@@ -349,6 +349,14 @@ const environmentRules: RuleEntry[] = [
       reportableByCitizen: true,
       policeInitiated: true,
       evidenceMode: "instantaneous",
+      reward: {
+        available: true,
+        authority: "各縣市環境保護局",
+        basis: "違反廢棄物清理法案件民眾檢舉獎金支給辦法",
+        rewardType: "percentage_of_fine",
+        estimateRange: "罰鍰之 30%–50%（約 360–3,000 元）",
+        notes: "需查獲屬實並完成裁罰後核發",
+      },
     },
   },
   {
@@ -361,6 +369,14 @@ const environmentRules: RuleEntry[] = [
       reportableByCitizen: true,
       policeInitiated: true,
       evidenceMode: "instantaneous",
+      reward: {
+        available: true,
+        authority: "環境部 / 各縣市環境保護局",
+        basis: "違反廢棄物清理法案件民眾檢舉獎金支給辦法 §3",
+        rewardType: "tiered",
+        estimateRange: "重大案件最高 50 萬元（依罰鍰級距）",
+        notes: "依查獲事業廢棄物之種類與數量分級，重大公害案件獎金顯著",
+      },
     },
   },
   {
@@ -373,6 +389,14 @@ const environmentRules: RuleEntry[] = [
       reportableByCitizen: true,
       policeInitiated: true,
       evidenceMode: "continuous",
+      reward: {
+        available: true,
+        authority: "各縣市環境保護局",
+        basis: "各縣市噪音管制獎勵辦法（依地方規定）",
+        rewardType: "percentage_of_fine",
+        estimateRange: "依縣市規定，約罰鍰之 10%–30%",
+        notes: "需經分貝計檢測達超標標準，且查獲屬實",
+      },
     },
   },
   {
@@ -385,6 +409,14 @@ const environmentRules: RuleEntry[] = [
       reportableByCitizen: true,
       policeInitiated: true,
       evidenceMode: "instantaneous",
+      reward: {
+        available: true,
+        authority: "各縣市環境保護局",
+        basis: "公私場所固定污染源違反空氣污染防制法案件民眾檢舉獎勵辦法",
+        rewardType: "percentage_of_fine",
+        estimateRange: "罰鍰之 10%–50%（依污染等級）",
+        notes: "重大空污違規案件獎金較高",
+      },
     },
   },
   {
@@ -397,6 +429,14 @@ const environmentRules: RuleEntry[] = [
       reportableByCitizen: true,
       policeInitiated: true,
       evidenceMode: "instantaneous",
+      reward: {
+        available: true,
+        authority: "各縣市環境保護局",
+        basis: "移動污染源民眾檢舉獎勵辦法（依地方規定）",
+        rewardType: "fixed_amount",
+        estimateRange: "約 100–500 元 / 案（依縣市與車種）",
+        notes: "需提供清楚之車牌與排煙畫面；機車黑煙最常見",
+      },
     },
   },
   {
@@ -409,6 +449,14 @@ const environmentRules: RuleEntry[] = [
       reportableByCitizen: true,
       policeInitiated: true,
       evidenceMode: "continuous",
+      reward: {
+        available: true,
+        authority: "各縣市環境保護局",
+        basis: "公私場所固定污染源違反空氣污染防制法案件民眾檢舉獎勵辦法",
+        rewardType: "percentage_of_fine",
+        estimateRange: "罰鍰之 10%–30%",
+        notes: "需多次取證證明持續排放",
+      },
     },
   },
 ];
@@ -532,4 +580,25 @@ export function categoryLabel(category: ViolationCategory): string {
  */
 export function listTrafficRules(): readonly LegalCitation[] {
   return trafficRules.map((r) => r.citation);
+}
+
+/**
+ * 列出所有目前標記有舉發獎金的法規條目（跨四大類）。
+ * 供測試與文件查閱用。
+ */
+export function listRewardableRules(): readonly LegalCitation[] {
+  const all: LegalCitation[] = [];
+  for (const list of Object.values(ruleMap)) {
+    for (const r of list) {
+      if (r.citation.reward?.available) all.push(r.citation);
+    }
+  }
+  return all;
+}
+
+/**
+ * 判斷一組 citations 中是否有任何一條有獎金。
+ */
+export function hasReward(citations: LegalCitation[]): boolean {
+  return citations.some((c) => c.reward?.available === true);
 }

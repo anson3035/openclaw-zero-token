@@ -134,6 +134,25 @@ Traffic cases run a second-pass commercial-grade Taiwan ANPR engine (`src/servic
 
 Videos are decoded with `ffmpeg-static` and sampled at 5 evenly-spaced timestamps (skipping the first/last 5% of duration). The middle frame is used for the violation classifier; all frames are pooled for the ANPR pass.
 
+### 舉發獎金 (Citizen-reporting rewards)
+
+Each rule in the legal catalog now carries an optional `reward` annotation. When at least one matched citation qualifies, the report surfaces a `💰` banner and lists per-citation reward details: 核發單位 (authority), 法源 (legal basis), 結構 (percentage / fixed / tiered), 估算金額 (estimate range), and 備註 (notes).
+
+Current rewardable categories (as of 2026):
+
+| 違規類型 | 結構 | 估算 | 主管機關 |
+|---|---|---|---|
+| 亂丟垃圾 (廢清法 §27) | 罰鍰百分比 | 罰鍰 30%–50% | 各縣市環保局 |
+| 棄置有害事業廢棄物 (廢清法 §46) | 分級 | 最高 50 萬元 | 環境部 / 縣市環保局 |
+| 噪音超標 (噪音管制法) | 罰鍰百分比 | 罰鍰 10%–30% | 各縣市環保局 |
+| 露天燃燒 / 空污 (空污法 §32) | 罰鍰百分比 | 罰鍰 10%–50% | 各縣市環保局 |
+| 車輛排氣超標（黑煙）(空污法 §40) | 固定 | 100–500 元 / 案 | 各縣市環保局 |
+| 餐飲業油煙 (空污法 §32) | 罰鍰百分比 | 罰鍰 10%–30% | 各縣市環保局 |
+
+**No-reward categories** (intentionally flagged false): 交通違停／闖紅燈／未禮讓行人（2022 道交 §7-1 改革取消多數獎金）、建築違章、公寓大廈管理。
+
+> ⚠ 估算金額依各縣市辦法不同，且須查獲屬實並完成裁罰後始能核發。請以當地環保局公告為準。
+
 ### Compliance gate
 
 Before `/send` will dispatch, the report must pass a compliance check covering:

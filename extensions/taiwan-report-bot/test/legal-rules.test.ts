@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { categoryLabel, listTrafficRules, matchLegalCitations } from "../src/data/legal-rules.js";
+import {
+  categoryLabel,
+  hasReward,
+  listRewardableRules,
+  listTrafficRules,
+  matchLegalCitations,
+} from "../src/data/legal-rules.js";
 
 describe("legal-rules — traffic", () => {
   it("matches red-line parking (instantaneous, citizen reportable)", () => {
@@ -130,5 +136,86 @@ describe("categoryLabel", () => {
     expect(categoryLabel("environment")).toBe("環保違規");
     expect(categoryLabel("building")).toBe("建築違規");
     expect(categoryLabel("condominium")).toBe("公寓大廈違規");
+  });
+});
+
+describe("舉發獎金 reward metadata", () => {
+  it("flags 亂丟垃圾 as rewardable with percentage_of_fine", () => {
+    const cs = matchLegalCitations("environment", "路邊亂丟垃圾");
+    const rule = cs.find((c) => c.shortLabel === "亂丟垃圾");
+    expect(rule?.reward?.available).toBe(true);
+    expect(rule?.reward?.rewardType).toBe("percentage_of_fine");
+    expect(rule?.reward?.authority).toMatch(/環境保護局|環境部/);
+  });
+
+  it("flags 棄置有害事業廢棄物 as tiered with large estimate", () => {
+    const cs = matchLegalCitations("environment", "事業廢棄物傾倒");
+    const rule = cs.find((c) => c.shortLabel?.includes("有害"));
+    expect(rule?.reward?.available).toBe(true);
+    expect(rule?.reward?.rewardType).toBe("tiered");
+    expect(rule?.reward?.estimateRange).toMatch(/萬/);
+  });
+
+  it("flags 車輛排氣超標 (空污移動污染源) as rewardable", () => {
+    const cs = matchLegalCitations("environment", "機車排氣黑煙");
+    const rule = cs.find((c) => c.shortLabel?.includes("排氣"));
+    expect(rule?.reward?.available).toBe(true);
+  });
+
+  it("flags 餐飲業油煙 as rewardable (continuous + percentage)", () => {
+    const cs = matchLegalCitations("environment", "餐廳油煙未處理");
+    const rule = cs.find((c) => c.shortLabel?.includes("油煙"));
+    expect(rule?.reward?.available).toBe(true);
+  });
+
+  it("flags 噪音超標 as rewardable", () => {
+    const cs = matchLegalCitations("environment", "工廠噪音擾鄰");
+    const rule = cs.find((c) => c.shortLabel === "噪音超標");
+    expect(rule?.reward?.available).toBe(true);
+  });
+
+  it("does NOT mark traffic-parking rules as rewardable (2022 reform)", () => {
+    const cases = [
+      "汽車違停於紅線",
+      "白色轎車違停於黃線",
+      "Toyota Wish 佔用人行道停車",
+      "機車闖紅燈通過路口",
+      "汽車未禮讓行人通過斑馬線",
+    ];
+    for (const desc of cases) {
+      const cs = matchLegalCitations("traffic", desc);
+      for (const c of cs) {
+        expect(c.reward?.available ?? false).toBe(false);
+      }
+    }
+  });
+
+  it("does NOT mark building/condominium rules as rewardable", () => {
+    expect(hasReward(matchLegalCitations("building", "頂樓加蓋"))).toBe(false);
+    expect(hasReward(matchLegalCitations("condominium", "佔用走廊"))).toBe(false);
+  });
+
+  it("listRewardableRules returns at least one env rule per main env type", () => {
+    const list = listRewardableRules();
+    const labels = list.map((r) => r.shortLabel).filter(Boolean) as string[];
+    expect(labels).toContain("亂丟垃圾");
+    expect(labels).toContain("棄置有害事業廢棄物");
+    expect(labels).toContain("噪音超標");
+    expect(labels).toContain("露天燃燒 / 空氣污染");
+    expect(labels).toContain("車輛排氣超標");
+    expect(labels).toContain("餐飲業油煙未處理");
+  });
+
+  it("hasReward() correctly aggregates a citation list", () => {
+    expect(hasReward(matchLegalCitations("environment", "亂丟垃圾"))).toBe(true);
+    expect(hasReward(matchLegalCitations("traffic", "違停紅線"))).toBe(false);
+  });
+
+  it("every rewardable rule has authority + basis (compliance with reporting docs)", () => {
+    for (const r of listRewardableRules()) {
+      expect(r.reward?.authority).toBeTruthy();
+      expect(r.reward?.basis).toBeTruthy();
+      expect(r.reward?.estimateRange).toBeTruthy();
+    }
   });
 });

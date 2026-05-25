@@ -68,11 +68,32 @@ export interface ComplianceCheck {
 }
 
 /**
- * 採證要件：
- * - instantaneous: 單張清晰照片即可（紅線、人行道、闖紅燈、騎樓、消防栓、公車站、身障車位…）
- * - continuous:    需 ≥ 2 張、間隔 ≥ 3 分鐘（黃線、限時收費停車格、一般違停未指明場所）
- * - moving:        動態違規，需錄影或連續多張（蛇行、未禮讓行人、違規迴轉、超車）
+ * 舉發獎金資訊（針對個別違規類型）。
+ *
+ * 法源主要為：
+ * - 環境部《違反廢棄物清理法案件民眾檢舉獎金支給辦法》
+ * - 環境部《公私場所固定污染源違反空氣污染防制法案件民眾檢舉獎勵辦法》
+ * - 各縣市環保局獎勵辦法（噪音、水污、油煙）
+ * - 菸害防制法檢舉獎勵（部分縣市）
+ *
+ * ⚠ 重要：實際獎金金額由各縣市環保局/主管機關依個案核發，
+ * 此處範圍為一般民眾常見額度，可能因地方規定、罰鍰金額、查獲結果而異。
  */
+export interface RewardProgram {
+  /** 是否有舉發獎金。多數交通/建築/公寓大廈案件為 false。 */
+  available: boolean;
+  /** 主管機關（核發單位）。 */
+  authority?: string;
+  /** 法源依據。 */
+  basis?: string;
+  /** 獎金結構類型。 */
+  rewardType?: "percentage_of_fine" | "fixed_amount" | "tiered";
+  /** 人類可讀的金額範圍（如 "罰鍰之 1/2"、"100–500 元"、"最高 50 萬元"）。 */
+  estimateRange?: string;
+  /** 額外備註（如「需查獲屬實後核發」、「依各縣市規定」）。 */
+  notes?: string;
+}
+
 export type EvidenceMode = "instantaneous" | "continuous" | "moving";
 
 export interface LegalCitation {
@@ -85,6 +106,8 @@ export interface LegalCitation {
   /** 是否屬道交條例 §7-2 警察可逕行舉發之違規。 */
   policeInitiated?: boolean;
   evidenceMode?: EvidenceMode;
+  /** 舉發獎金資訊。未設定者預設視為 available=false。 */
+  reward?: RewardProgram;
 }
 
 export interface SmsArtifact {

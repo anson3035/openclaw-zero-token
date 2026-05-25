@@ -1,6 +1,7 @@
 import { lookupRecipients, normalizePhoneE164 } from "../data/authorities.js";
 import { categoryLabel, matchLegalCitations } from "../data/legal-rules.js";
 import type {
+  LegalCitation,
   MediaEvidence,
   ReportArtifact,
   ReportContext,
@@ -156,17 +157,39 @@ export function buildReport(ctx: ReportContext): ReportArtifact {
     if (m === "moving") return "動態違規 — 建議錄影或連續多張";
     return "—";
   };
-  const reportableTag = (c: { reportableByCitizen?: boolean }): string => {
+  const reportableTag = (c: LegalCitation): string => {
     if (c.reportableByCitizen === false) return "❌ 限警察";
     return "✅ 民眾可檢舉";
   };
+  const rewardLine = (c: LegalCitation): string => {
+    if (!c.reward?.available) return "";
+    const parts: string[] = [`  - 💰 *舉發獎金*：${c.reward.estimateRange ?? "（依個案核發）"}`];
+    if (c.reward.authority) parts.push(`核發單位：${c.reward.authority}`);
+    if (c.reward.basis) parts.push(`法源：${c.reward.basis}`);
+    const header = parts.join("　·　");
+    return c.reward.notes ? `${header}\n    （備註：${c.reward.notes}）` : header;
+  };
   const citationLines = citations
-    .map(
-      (c) => `- **${c.statute} ${c.article}**${c.shortLabel ? `（${c.shortLabel}）` : ""}
-  - 處罰：${c.penalty}
-  - 民眾檢舉：${reportableTag(c)}　·　採證要件：${evidenceModeLabel(c.evidenceMode)}`,
-    )
+    .map((c) => {
+      const reward = rewardLine(c);
+      return [
+        `- **${c.statute} ${c.article}**${c.shortLabel ? `（${c.shortLabel}）` : ""}${c.reward?.available ? "  💰" : ""}`,
+        `  - 處罰：${c.penalty}`,
+        `  - 民眾檢舉：${reportableTag(c)}　·　採證要件：${evidenceModeLabel(c.evidenceMode)}`,
+        reward,
+      ]
+        .filter((s) => s !== "")
+        .join("\n");
+    })
     .join("\n");
+
+  const rewardableCitations = citations.filter((c) => c.reward?.available);
+  const rewardBanner =
+    rewardableCitations.length > 0
+      ? `\n\n> 💰 **本案符合舉發獎金資格**：${rewardableCitations
+          .map((c) => c.shortLabel ?? c.article)
+          .join("、")}。詳見下方法條引用區塊。`
+      : "";
 
   const markdown = `### 違規檢舉報告書
 
@@ -183,7 +206,7 @@ ${evidenceListMarkdown(ctx)}
 - 違規事項：${ctx.analysis.description}
 ${ctx.analysis.identifiers.licensePlate ? `- 車牌號碼：\`${ctx.analysis.identifiers.licensePlate}\`` : ""}
 
-**3. 法條引用**
+**3. 法條引用**${rewardBanner}
 ${citationLines}
 
 **4. 檢舉人**

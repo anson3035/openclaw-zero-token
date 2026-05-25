@@ -165,4 +165,45 @@ describe("report builder", () => {
     expect(r.emailBody).toContain("SHA256");
     expect(r.emailBody).toContain("a".repeat(64));
   });
+
+  it("renders the 💰 reward banner for environmental cases that qualify", () => {
+    const r = buildReport(
+      makeCtx({
+        analysis: {
+          category: "environment",
+          subject: "路邊亂丟垃圾",
+          description: "路邊隨意亂丟垃圾",
+          identifiers: { wasteType: "家庭垃圾" },
+          confidence: "high",
+          evidenceGaps: [],
+        },
+      }),
+    );
+    expect(r.markdown).toContain("💰");
+    expect(r.markdown).toContain("舉發獎金");
+    expect(r.markdown).toContain("罰鍰之");
+  });
+
+  it("does NOT render reward banner for traffic-parking cases (2022 reform)", () => {
+    const r = buildReport(makeCtx()); // default = 紅線 traffic
+    expect(r.markdown).not.toContain("💰");
+    expect(r.markdown).not.toContain("舉發獎金");
+  });
+
+  it("renders the tiered reward note for hazardous-waste dumping", () => {
+    const r = buildReport(
+      makeCtx({
+        analysis: {
+          category: "environment",
+          subject: "事業廢棄物傾倒",
+          description: "違法傾倒有害事業廢棄物於山區",
+          identifiers: { wasteType: "事業廢棄物" },
+          confidence: "high",
+          evidenceGaps: [],
+        },
+      }),
+    );
+    expect(r.markdown).toContain("💰");
+    expect(r.markdown).toMatch(/萬/);
+  });
 });
