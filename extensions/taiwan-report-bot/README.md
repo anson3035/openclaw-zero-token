@@ -46,6 +46,28 @@ Supported categories:
         └──────────┘  └──────────┘  └──────────────┘  └──────────┘
 ```
 
+## Quick start (本機部署一鍵腳本)
+
+```bash
+git clone https://github.com/anson3035/openclaw-zero-token.git
+cd openclaw-zero-token/extensions/taiwan-report-bot
+git checkout claude/taiwan-violation-reporting-61ejC
+bash setup-local.sh
+```
+
+腳本會：
+1. 檢查 Node ≥ 20
+2. `npm install`
+3. 互動引導填入 `OPENAI_API_KEY`（必填）、`GEMINI_API_KEY`、`TELEGRAM_BOT_TOKEN`、`SMTP_*`（皆選填）
+4. 跑 `tsc --noEmit` 確認環境健康
+5. 顯示下一步啟動指令
+
+完成後直接：
+- **網頁版**：`npm run start:api` → 瀏覽器開 `http://127.0.0.1:8787/`
+- **桌面版**：`npm run desktop`（Electron 視窗）
+- **Telegram bot**：`RUN=bot npm start`
+- **全部**：`npm start`
+
 ## Setup
 
 ```bash
