@@ -48,6 +48,23 @@ const FRONTEND_DIR = resolve(
   "../../web",
 );
 
+/**
+ * 個人資料蒐集告知聲明（依《個資法 §8》）。
+ * 於使用者註冊時回傳，前端應顯示一次性同意 modal。
+ */
+const PRIVACY_NOTICE = {
+  title: "個人資料蒐集告知聲明（依個資法 §8）",
+  purpose: "提供違規檢舉案件處理、機關通訊及檢舉人身分核驗",
+  categories: ["姓名、聯絡電話/電子郵件、身分證末四碼（選填）", "上傳之違規影像 EXIF 資料（拍攝時間、GPS 座標）"],
+  retention: "案件結案後最長保存 1 年；超過自動刪除",
+  rights: [
+    "依個資法 §3：得隨時查詢、請求閱覽、製給複本、補充更正、停止蒐集處理或請求刪除",
+    "拒絕提供個資權利：得拒絕，但將無法使用本系統檢舉服務",
+  ],
+  confidentiality: "主管機關依個資法 §16 第 3 款及政府資訊公開法 §18，對檢舉人身分予以保密。",
+  controller: "本系統之檢舉人個資由您本機保存，伺服器僅於送件時做為郵件 metadata 使用。",
+};
+
 export function createApi(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   app.use("*", cors({ origin: "*", credentials: false }));
@@ -87,7 +104,11 @@ export function createApi(): Hono<AppEnv> {
       });
       const token = await issueToken(user.id);
       await audit({ type: "identity_set", subject: sessionKeyForUser(user.id) });
-      return c.json({ token, user: publicUser(user) });
+      return c.json({
+        token,
+        user: publicUser(user),
+        privacyNotice: PRIVACY_NOTICE,
+      });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400);
     }

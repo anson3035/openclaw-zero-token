@@ -8,6 +8,7 @@ import type {
   SmsArtifact,
 } from "../types.js";
 import { checkCompliance } from "./compliance.js";
+import { computeStatuteOfLimitations } from "./statute-of-limitations.js";
 
 function primary(ctx: ReportContext): MediaEvidence {
   return ctx.evidence[0]!;
@@ -169,19 +170,48 @@ export function buildReport(ctx: ReportContext): ReportArtifact {
     const header = parts.join("　·　");
     return c.reward.notes ? `${header}\n    （備註：${c.reward.notes}）` : header;
   };
+  const liabilityLine = (c: LegalCitation): string => {
+    if (!c.liabilityTarget || c.liabilityTarget === "either") return "";
+    const label =
+      c.liabilityTarget === "driver"
+        ? "駕駛人（在場違規可辨識）"
+        : "車輛 / 場所所有人（駕駛/行為人不在場）";
+    return `  - 🎯 裁罰主體：${label}（依道交 §85）`;
+  };
+  const criminalLine = (c: LegalCitation): string => {
+    if (!c.criminalAlternative) return "";
+    const a = c.criminalAlternative;
+    return `  - ⚖ **刑罰優先警示**：本案可能同時觸犯 ${a.statute} ${a.article}（${a.description}）。依《行政罰法 §26》，刑罰優先。${a.preferredAction}`;
+  };
   const citationLines = citations
     .map((c) => {
-      const reward = rewardLine(c);
       return [
-        `- **${c.statute} ${c.article}**${c.shortLabel ? `（${c.shortLabel}）` : ""}${c.reward?.available ? "  💰" : ""}`,
+        `- **${c.statute} ${c.article}**${c.shortLabel ? `（${c.shortLabel}）` : ""}${c.reward?.available ? "  💰" : ""}${c.criminalAlternative ? "  ⚖" : ""}`,
         `  - 處罰：${c.penalty}`,
         `  - 民眾檢舉：${reportableTag(c)}　·　採證要件：${evidenceModeLabel(c.evidenceMode)}`,
-        reward,
+        liabilityLine(c),
+        rewardLine(c),
+        criminalLine(c),
       ]
         .filter((s) => s !== "")
         .join("\n");
     })
     .join("\n");
+
+  // 舉發時效
+  const primaryCapture = primary(ctx).capturedAt;
+  let solLine = "";
+  if (primaryCapture) {
+    const sol = computeStatuteOfLimitations(ctx.analysis.category, primaryCapture);
+    if (sol.totalDays > 0) {
+      const flag = sol.valid ? (sol.remainingDays <= 7 ? "⚠" : "✅") : "❗";
+      solLine = `- ${flag} 舉發時效：${sol.totalDays} 日（${sol.basis.split("：")[0]}）— 剩餘 ${sol.valid ? sol.remainingDays : 0} 天${!sol.valid ? "（已過期）" : ""}`;
+    } else {
+      solLine = `- ℹ 舉發時效：本類違規屬持續違規狀態，無時效限制`;
+    }
+  } else {
+    solLine = `- ⚠ 舉發時效：拍攝時間未取得，無法精確計算 90 日時效（道交 §90 第 1 項）`;
+  }
 
   const rewardableCitations = citations.filter((c) => c.reward?.available);
   const rewardBanner =
@@ -209,17 +239,23 @@ ${ctx.analysis.identifiers.licensePlate ? `- 車牌號碼：\`${ctx.analysis.ide
 **3. 法條引用**${rewardBanner}
 ${citationLines}
 
-**4. 檢舉人**
-- ${reporterLine(ctx)}
+**4. 法務要件**
+${solLine}
+- ℹ 法律版本：${new Date().getFullYear()} 年現行版（建議送件前查詢全國法規資料庫 https://law.moj.gov.tw 確認）
+- ℹ 一事不二罰：本案兩款並罰時，依較重者處之（行政罰法 §24）
 
-**5. 證據檢核**
+**5. 檢舉人**
+- ${reporterLine(ctx)}
+- 🔒 主管機關依《個人資料保護法 §16 第 3 款》及《政府資訊公開法 §18》，**對檢舉人身分應予保密**
+
+**6. 證據檢核**
 - ${evidenceAssessment(ctx)}
 - 隱私處理建議：${privacyAdvice(ctx)}
 
-**6. 送件前合規檢查**
+**7. 送件前合規檢查**
 ${complianceSection(compliance.issues)}
 
-**7. 承辦單位**
+**8. 承辦單位**
 - Email：${recipient.email}${recipient.onlineForm ? `\n- 線上檢舉：${recipient.onlineForm}` : ""}${
     sms
       ? `\n- 簡訊檢舉：\`${sms.number}\`${sms.note ? `（${sms.note}）` : ""}\n  📱 一鍵發送：${sms.deepLink}`

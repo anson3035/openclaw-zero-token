@@ -1,4 +1,9 @@
-import type { LegalCitation, ViolationCategory } from "../types.js";
+import type {
+  CriminalAlternative,
+  LegalCitation,
+  LiabilityTarget,
+  ViolationCategory,
+} from "../types.js";
 
 interface RuleEntry {
   pattern: RegExp;
@@ -35,6 +40,7 @@ const trafficRules: RuleEntry[] = [
       reportableByCitizen: true,
       policeInitiated: true,
       evidenceMode: "instantaneous",
+      liabilityTarget: "owner", // 違停駕駛多不在場
     },
   },
   {
@@ -553,7 +559,87 @@ const ruleMap: Record<ViolationCategory, RuleEntry[]> = {
 };
 
 /**
- * 比對違規描述，回傳所有命中之法規citation。
+ * 從 citation 之 shortLabel 推導裁罰主體（道交 §85）：
+ *   - 違停 / 佔用 / 排氣 / 油煙 / 噪音 / 違建 → owner (車主 / 場所所有人)
+ *   - 闖紅燈 / 紅燈右轉 / 逆向 / 蛇行 / 超車 / 迴轉 / 未禮讓 / 行駛人行道 /
+ *     吸菸 / 安全帽 / 安全帶 / 酒駕 / 安全距離 / 超速 → driver (駕駛在場)
+ *   - 亂丟垃圾 / 棄置事業廢棄物 → either (個人或法人視情況)
+ */
+function inferLiabilityTarget(c: LegalCitation): LiabilityTarget {
+  if (c.liabilityTarget) return c.liabilityTarget;
+  const label = c.shortLabel ?? "";
+  if (/違規停車|佔用|並排|計時|油煙|噪音|排氣|違章|危險建築|未許可施工|違法變更|寵物/.test(label)) {
+    return "owner";
+  }
+  if (/闖紅燈|紅燈右轉|逆向|蛇行|超車|迴轉|未禮讓|機車行駛人行道|吸菸|安全帽|安全帶|酒|安全距離|超速/.test(label)) {
+    return "driver";
+  }
+  return "either";
+}
+
+/**
+ * 從 shortLabel 推導刑罰替代法條（行政罰法 §26 一事不二罰，刑罰優先）：
+ *   - 棄置有害事業廢棄物 → 刑法 §190-1 流放毒物罪
+ *   - 蛇行 / 危險駕駛   → 刑法 §185 妨害公眾往來安全
+ *   - 酒後駕車         → 刑法 §185-3 公共危險罪
+ */
+function inferCriminalAlternative(c: LegalCitation): CriminalAlternative | undefined {
+  if (c.criminalAlternative) return c.criminalAlternative;
+  const label = c.shortLabel ?? "";
+  if (/有害事業廢棄物|棄置.*廢棄物/.test(label)) {
+    return {
+      statute: "中華民國刑法",
+      article: "第 190-1 條",
+      description: "流放毒物或毒害物罪（1 年以上 7 年以下有期徒刑）",
+      preferredAction: "屬刑事案件，請優先撥打 110 並向地方檢察署提告，不宜僅循民眾檢舉管道。",
+    };
+  }
+  if (/蛇行|危險駕駛/.test(label)) {
+    return {
+      statute: "中華民國刑法",
+      article: "第 185 條",
+      description: "妨害公眾往來安全罪（5 年以下有期徒刑）",
+      preferredAction: "若情節重大（如多次危險變換車道造成他車緊急閃避），請優先撥打 110，並保留行車記錄器影片。",
+    };
+  }
+  if (/酒/.test(label) && /駕/.test(label)) {
+    return {
+      statute: "中華民國刑法",
+      article: "第 185-3 條",
+      description: "不能安全駕駛罪（2 年以下有期徒刑）",
+      preferredAction: "酒駕為刑事案件，民眾無法檢舉。請立即撥打 110 由警員攔檢。",
+    };
+  }
+  return undefined;
+}
+
+/**
+ * 從 category 推導舉發時效（自違規日起天數）。
+ *   - 交通：90 日（道交 §90 第 1 項）
+ *   - 環保：365 日（依各環保專法）
+ *   - 建築 / 公寓大廈：無（持續違規狀態）
+ */
+function inferStatuteOfLimitations(c: LegalCitation): number | undefined {
+  if (c.statuteOfLimitationsDays !== undefined) return c.statuteOfLimitationsDays;
+  if (c.statute === "道路交通管理處罰條例") return 90;
+  return undefined;
+}
+
+/** 將 enrichment 套用到 citation 上。 */
+function enrich(c: LegalCitation): LegalCitation {
+  const enriched: LegalCitation = {
+    ...c,
+    liabilityTarget: inferLiabilityTarget(c),
+  };
+  const ca = inferCriminalAlternative(c);
+  if (ca) enriched.criminalAlternative = ca;
+  const sol = inferStatuteOfLimitations(c);
+  if (sol !== undefined) enriched.statuteOfLimitationsDays = sol;
+  return enriched;
+}
+
+/**
+ * 比對違規描述，回傳所有命中之法規 citation（經 enrichment 處理）。
  * 若無命中，回傳該類別第一條（fallback）。
  */
 export function matchLegalCitations(
@@ -561,9 +647,9 @@ export function matchLegalCitations(
   description: string,
 ): LegalCitation[] {
   const rules = ruleMap[category];
-  const matched = rules.filter((r) => r.pattern.test(description)).map((r) => r.citation);
+  const matched = rules.filter((r) => r.pattern.test(description)).map((r) => enrich(r.citation));
   if (matched.length > 0) return matched;
-  return [rules[0]!.citation];
+  return [enrich(rules[0]!.citation)];
 }
 
 export function categoryLabel(category: ViolationCategory): string {

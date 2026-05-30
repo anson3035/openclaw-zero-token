@@ -1,5 +1,6 @@
 import { matchLegalCitations } from "../data/legal-rules.js";
 import type { ComplianceCheck, LegalCitation, ReportContext } from "../types.js";
+import { computeStatuteOfLimitations } from "./statute-of-limitations.js";
 
 const MIN_PHOTOS_FOR_CONTINUOUS_TRAFFIC = 2;
 const MIN_INTERVAL_MINUTES = 3;
@@ -118,6 +119,34 @@ export function checkCompliance(
   // 5) 地址
   if (ctx.address.full.startsWith("（未取得地址")) {
     issues.push("⚠ 尚未取得明確地址，請用 /address 補上完整地址。");
+  }
+
+  // 6) 舉發時效（道交 §90）
+  const capturedAt = ctx.evidence[0]?.capturedAt;
+  if (capturedAt) {
+    const sol = computeStatuteOfLimitations(ctx.analysis.category, capturedAt);
+    if (!sol.valid) {
+      issues.push(
+        `❗ 已逾舉發時效（${sol.basis}）。拍攝至今 ${Math.abs(sol.remainingDays)} 天，已超過 ${sol.totalDays} 天上限。即使送件機關亦不予舉發。`,
+      );
+    } else if (sol.totalDays > 0 && sol.remainingDays <= 7) {
+      issues.push(
+        `⚠ 距舉發時效屆滿剩 ${sol.remainingDays} 天（${sol.basis}）。請儘速完成送件。`,
+      );
+    }
+  } else if (ctx.analysis.category === "traffic") {
+    issues.push(
+      "⚠ 拍攝時間（EXIF）未取得。道交 §90 三個月舉發時效自違規日起算，建議於原檔或書面註記實際拍攝時間。",
+    );
+  }
+
+  // 7) 刑罰優先（行政罰法 §26）
+  for (const c of matchedCitations) {
+    if (c.criminalAlternative) {
+      issues.push(
+        `⚠ 本案類型可能同時觸犯刑事罪（${c.criminalAlternative.statute} ${c.criminalAlternative.article}：${c.criminalAlternative.description}）。依《行政罰法 §26》一事不二罰原則，刑罰優先。${c.criminalAlternative.preferredAction}`,
+      );
+    }
   }
 
   return { ok: issues.length === 0, issues };
