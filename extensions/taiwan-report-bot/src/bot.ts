@@ -3,6 +3,7 @@ import { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import { loadConfig, smtpConfigured, userAllowed } from "./config.js";
 import { audit } from "./services/audit.js";
+import { checkReportingFrequency } from "./services/compliance.js";
 import { readExif } from "./services/exif.js";
 import { reverseGeocode, parseUserAddress } from "./services/geocoding.js";
 import { recognizePlate } from "./services/lpr.js";
@@ -368,6 +369,11 @@ export function createBot(): Telegraf {
       await audit({ type: "rate_limited", subject: tgSubject(ctx.chat.id), meta: { userId: ctx.from?.id, action: "send" } });
       await ctx.reply(rateLimitMessage("send"));
       return;
+    }
+    // 高頻舉發提示（非阻擋）
+    const freqWarning = await checkReportingFrequency(tgSubject(ctx.chat.id));
+    if (freqWarning) {
+      await ctx.reply(freqWarning, { parse_mode: "Markdown" });
     }
     await audit({ type: "send_confirmed", subject: tgSubject(ctx.chat.id), meta: { userId: ctx.from?.id } });
     try {

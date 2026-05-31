@@ -60,6 +60,7 @@ const analysisSchema = z.object({
   evidenceGaps: z.array(z.string()),
   vehicleType: vehicleTypeSchema.optional(),
   sceneType: sceneTypeSchema.optional(),
+  signTexts: z.array(z.string()).optional(),
 });
 
 const SYSTEM_PROMPT = `你是台灣行政法規檢舉稽核專家。分析使用者上傳的影像，識別違規行為並產出結構化 JSON。
@@ -84,8 +85,15 @@ const SYSTEM_PROMPT = `你是台灣行政法規檢舉稽核專家。分析使用
   "confidence": "high|medium|low",
   "evidenceGaps": ["列出證據不足之處，如：車牌模糊、時間戳記缺失、違規事實不明顯"],
   "vehicleType": "選一：car/suv/truck/bus/motorcycle_light/motorcycle_heavy/ev_car/ev_motorcycle/rental_ev/taxi/government/police/unknown",
-  "sceneType": "選一：red_line/yellow_line/sidewalk/arcade/wheelchair_path/fire_facility/bus_stop/intersection/disabled_parking/motorcycle_grid/metered_parking/designated_parking/private_property/moving_violation/unknown"
+  "sceneType": "選一：red_line/yellow_line/sidewalk/arcade/wheelchair_path/fire_facility/bus_stop/intersection/disabled_parking/motorcycle_grid/metered_parking/designated_parking/private_property/moving_violation/unknown",
+  "signTexts": ["畫面中所有可見之告示牌、路標、看板、路面標字文字。例：請留輪椅通道、禁止停車、24 小時違規拖吊。沒有則回 []"]
 }
+
+signTexts 提取準則：
+- 完整讀出所有可辨識文字，繁體中文優先
+- 包含：路邊豎立告示、貼於牆面之 A4 通知、紅色禁停標誌、騎樓「請勿停車」貼紙、路面噴字（如「殘」、「機」、「禁停」）、招牌
+- 不包含：商號招牌（與違規無關）、車牌（已在 identifiers）、新年春聯等裝飾
+- 多項以陣列分開：["請留輪椅通道", "請勿停車"]
 
 vehicleType 判斷準則：
 - 綠色 EV 牌（含「電動車」中文標）+ 汽車 → ev_car；機車 → ev_motorcycle

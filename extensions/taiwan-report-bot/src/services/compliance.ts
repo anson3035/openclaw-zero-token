@@ -177,5 +177,51 @@ export function checkCompliance(
     }
   }
 
+  // 8) 告示牌證據加成 — 若畫面有明示禁停告示，違規意圖明確化（非阻擋，僅資訊）
+  const signs = ctx.analysis.signTexts ?? [];
+  if (signs.length > 0) {
+    const prohibitive = signs.filter((s) =>
+      /(禁止|請勿|不得|禁停|拖吊|違規|請留輪椅|無障礙)/.test(s),
+    );
+    if (prohibitive.length > 0) {
+      // 不算 issue，但若是「無障礙」標示且 sceneType 沒抓到，補強
+      const hasWheelchair = prohibitive.some((s) => /(輪椅|無障礙)/.test(s));
+      if (hasWheelchair && ctx.analysis.sceneType !== "wheelchair_path") {
+        issues.push(
+          `ℹ 影像有明示告示「${prohibitive.find((s) => /輪椅|無障礙/.test(s))}」，本案應同時適用《身心障礙者權益保障法 §57》。`,
+        );
+      }
+    }
+  }
+
   return { ok: issues.length === 0, issues };
+}
+
+// ============================================================================
+// 連續舉發頻率警示（非同步，獨立 API）
+// ============================================================================
+
+/**
+ * 檢查使用者近 30 日舉發次數，若 ≥ 警示門檻則回傳警示訊息。
+ * 不阻擋送件，僅提示使用者注意「職業檢舉達人」風險（2022 道交 §7-1 改革精神）。
+ *
+ * 由 bot.ts / api server 在 /confirm 前另外呼叫，避免 compliance gate 同步 I/O。
+ */
+const FREQUENCY_WARN_THRESHOLD = 30; // 30 日內 30 件
+const FREQUENCY_HARD_WARN_THRESHOLD = 100; // 30 日內 100 件 — 嚴重提示
+
+export async function checkReportingFrequency(subject: string): Promise<string | undefined> {
+  const { countRecentSentReports } = await import("./audit.js");
+  const count = await countRecentSentReports(subject, 30);
+  if (count >= FREQUENCY_HARD_WARN_THRESHOLD) {
+    return (
+      `⚠ *高頻舉發提示*：您近 30 日已寄出 ${count} 件檢舉。\n` +
+      `依 2022 道交 §7-1 修法後，部分縣市對「集中或過量」之檢舉案件得從嚴審酌。\n` +
+      `建議：分散送件節奏，或集中於同一案件之多違規一次反映。`
+    );
+  }
+  if (count >= FREQUENCY_WARN_THRESHOLD) {
+    return `ℹ 您近 30 日已寄出 ${count} 件檢舉。請注意分散送件節奏。`;
+  }
+  return undefined;
 }

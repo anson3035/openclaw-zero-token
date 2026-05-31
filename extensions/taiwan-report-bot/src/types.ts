@@ -80,6 +80,12 @@ export interface AnalyzedViolation {
   vehicleType?: VehicleType;
   /** 違規場景類型 — 用於精確路由法條。 */
   sceneType?: SceneType;
+  /**
+   * 畫面中可見之告示牌 / 看板 / 路面標字文字內容（OCR）。
+   * 例：["請留輪椅通道", "禁止停車違規拖吊", "24 小時禁停"]
+   * compliance gate 用此加重證據力或觸發特殊條文（如身障 §57）。
+   */
+  signTexts?: string[];
 }
 
 export interface ResolvedAddress {

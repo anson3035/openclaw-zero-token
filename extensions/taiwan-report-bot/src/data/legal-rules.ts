@@ -326,6 +326,21 @@ const trafficRules: RuleEntry[] = [
     },
   },
 
+  // ============ 停車超出格線（車尾入侵人行道）— 特殊 §56-1-4 變體 ============
+  {
+    pattern: /(車檔|輪擋|越過.*車檔|跨越.*車檔|跨越.*輪擋|超出.*停車格|超出.*格線|尾.*壓.*人行道|尾.*入.*人行道|車身.*越過|越界停車)/,
+    citation: {
+      shortLabel: "停車超出格線（車尾入侵人行道）",
+      statute: "道路交通管理處罰條例",
+      article: "第 56 條 第 1 項 第 4 款",
+      penalty: "停車超出停車格線致車身延伸至人行道或車道，視同人行道停車。處 600–1,200 元罰鍰。",
+      reportableByCitizen: true,
+      policeInitiated: true,
+      evidenceMode: "instantaneous",
+      liabilityTarget: "owner",
+    },
+  },
+
   // ============ 兜底：場所未指明的「違停」— 保守預設為 continuous ============
   {
     pattern: /(違停|違規停車)/,
