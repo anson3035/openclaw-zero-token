@@ -12,6 +12,40 @@ function client(): OpenAI {
   return cachedClient;
 }
 
+const vehicleTypeSchema = z.enum([
+  "car",
+  "suv",
+  "truck",
+  "bus",
+  "motorcycle_light",
+  "motorcycle_heavy",
+  "ev_car",
+  "ev_motorcycle",
+  "rental_ev",
+  "taxi",
+  "government",
+  "police",
+  "unknown",
+]);
+
+const sceneTypeSchema = z.enum([
+  "red_line",
+  "yellow_line",
+  "sidewalk",
+  "arcade",
+  "wheelchair_path",
+  "fire_facility",
+  "bus_stop",
+  "intersection",
+  "disabled_parking",
+  "motorcycle_grid",
+  "metered_parking",
+  "designated_parking",
+  "private_property",
+  "moving_violation",
+  "unknown",
+]);
+
 const analysisSchema = z.object({
   category: z.enum(["traffic", "environment", "building", "condominium"]),
   subject: z.string(),
@@ -24,6 +58,8 @@ const analysisSchema = z.object({
   }),
   confidence: z.enum(["high", "medium", "low"]),
   evidenceGaps: z.array(z.string()),
+  vehicleType: vehicleTypeSchema.optional(),
+  sceneType: sceneTypeSchema.optional(),
 });
 
 const SYSTEM_PROMPT = `你是台灣行政法規檢舉稽核專家。分析使用者上傳的影像，識別違規行為並產出結構化 JSON。
@@ -46,8 +82,28 @@ const SYSTEM_PROMPT = `你是台灣行政法規檢舉稽核專家。分析使用
     "occupiedArea": "若為佔用"
   },
   "confidence": "high|medium|low",
-  "evidenceGaps": ["列出證據不足之處，如：車牌模糊、時間戳記缺失、違規事實不明顯"]
+  "evidenceGaps": ["列出證據不足之處，如：車牌模糊、時間戳記缺失、違規事實不明顯"],
+  "vehicleType": "選一：car/suv/truck/bus/motorcycle_light/motorcycle_heavy/ev_car/ev_motorcycle/rental_ev/taxi/government/police/unknown",
+  "sceneType": "選一：red_line/yellow_line/sidewalk/arcade/wheelchair_path/fire_facility/bus_stop/intersection/disabled_parking/motorcycle_grid/metered_parking/designated_parking/private_property/moving_violation/unknown"
 }
+
+vehicleType 判斷準則：
+- 綠色 EV 牌（含「電動車」中文標）+ 汽車 → ev_car；機車 → ev_motorcycle
+- 牌首字母 RE 開頭 → rental_ev；T/Y 開頭 → taxi；E 開頭 → ev_*
+- 警車標誌、警徽、POLICE 字樣 → police（**不視為一般民眾檢舉違規**）
+- 牌「使」「外」字樣 或「公務」標 → government
+- 機車牌格式 3L-3D / 2L-3D → motorcycle_light；大型重型黃牌 → motorcycle_heavy
+
+sceneType 判斷準則：
+- 紅色路緣標線、紅色磚紋 → red_line（注意：紅磚人行道**不是**紅線！）
+- 黃色路緣標線 → yellow_line
+- 一般人行道（含視障引導磚但無「請留輪椅通」標示）→ sidewalk
+- 騎樓（建築物柱列下方有屋簷）→ arcade
+- 有「請留輪椅通」「無障礙通道」標示 → wheelchair_path
+- 機車格邊線可見（白色矩形格）→ motorcycle_grid
+- 計時收費繳費柱可見 → metered_parking
+- 派出所、警局、軍營等權威場域 → private_property
+- 闖紅燈 / 未禮讓 / 蛇行等動態 → moving_violation
 
 僅輸出 JSON，不要 markdown 程式碼框。`;
 

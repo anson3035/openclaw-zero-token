@@ -507,6 +507,34 @@ const buildingRules: RuleEntry[] = [
       evidenceMode: "instantaneous",
     },
   },
+  // ===== 建築法 §90 騎樓淨空 — 違停騎樓除道交 §56-1-4 外，本條同時適用 =====
+  {
+    pattern: /(騎樓.*停|停.*騎樓|佔用騎樓|占用騎樓|騎樓.*堆置|騎樓.*雜物)/,
+    citation: {
+      shortLabel: "騎樓淨空違反（建築法）",
+      statute: "建築法",
+      article: "第 90 條 / 第 91 條",
+      penalty: "騎樓地面層之空間，不得堆放雜物、設置攤位或停車。違反者處新台幣 6,000 元以上 30,000 元以下罰鍰，並限期改善。",
+      reportableByCitizen: true,
+      policeInitiated: false,
+      evidenceMode: "instantaneous",
+      liabilityTarget: "owner",
+    },
+  },
+  // ===== 身心障礙者權益保障法 §57 無障礙環境 =====
+  {
+    pattern: /(無障礙|輪椅通道|輪椅.*通|盲人引導|視障引導|身心障礙.*通行)/,
+    citation: {
+      shortLabel: "佔用無障礙通道",
+      statute: "身心障礙者權益保障法",
+      article: "第 57 條 / 第 88 條（並依各縣市無障礙設施管理自治條例）",
+      penalty: "違反公共場所無障礙環境設置標準，致影響身障者通行。處 6,000 元以上 30,000 元以下罰鍰，並命限期改善。",
+      reportableByCitizen: true,
+      policeInitiated: true,
+      evidenceMode: "instantaneous",
+      liabilityTarget: "owner",
+    },
+  },
 ];
 
 // ============================================================================
@@ -639,17 +667,94 @@ function enrich(c: LegalCitation): LegalCitation {
 }
 
 /**
- * 比對違規描述，回傳所有命中之法規 citation（經 enrichment 處理）。
+ * 場景類型 → 描述關鍵字 mapping。
+ * Vision 模型回報 sceneType 後，自動附加對應關鍵字到 description，
+ * 確保 pattern matching 能命中正確法條（避免 vision 描述用詞變化造成漏判）。
+ */
+const SCENE_TYPE_KEYWORDS: Record<string, string> = {
+  red_line: " 紅線",
+  yellow_line: " 黃線",
+  sidewalk: " 人行道",
+  arcade: " 騎樓",
+  wheelchair_path: " 無障礙 輪椅通道",
+  fire_facility: " 消防栓 消防車出入口",
+  bus_stop: " 公車招呼站",
+  intersection: " 交岔路口",
+  disabled_parking: " 身心障礙專用車位",
+  motorcycle_grid: " 機車格",
+  metered_parking: " 計時收費 停車格",
+  moving_violation: " 動態違規",
+};
+
+/**
+ * 比對違規描述 + 場景類型，回傳所有命中之法規 citation（經 enrichment 處理）。
+ *
+ * v4.2 新增：sceneType 參數讓 vision 模型的結構化判斷直接驅動法條命中，
+ * 而不依賴 description 文字是否包含關鍵字。
+ *
  * 若無命中，回傳該類別第一條（fallback）。
  */
 export function matchLegalCitations(
   category: ViolationCategory,
   description: string,
+  sceneType?: string,
 ): LegalCitation[] {
   const rules = ruleMap[category];
-  const matched = rules.filter((r) => r.pattern.test(description)).map((r) => enrich(r.citation));
+  const enhancedDesc =
+    sceneType && SCENE_TYPE_KEYWORDS[sceneType]
+      ? description + SCENE_TYPE_KEYWORDS[sceneType]
+      : description;
+  const matched = rules
+    .filter((r) => r.pattern.test(enhancedDesc))
+    .map((r) => enrich(r.citation));
   if (matched.length > 0) return matched;
   return [enrich(rules[0]!.citation)];
+}
+
+/**
+ * 跨類別比對：當違規涉及多個類別時（如騎樓違停 = traffic §56-1-4 + building §90），
+ * 同時 lookup 多個類別，回傳合併之 citations。
+ */
+export function matchLegalCitationsMulti(
+  primaryCategory: ViolationCategory,
+  description: string,
+  sceneType?: string,
+): LegalCitation[] {
+  const out: LegalCitation[] = [];
+  const seen = new Set<string>();
+
+  // primary 必查
+  for (const c of matchLegalCitations(primaryCategory, description, sceneType)) {
+    const key = `${c.statute}|${c.article}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(c);
+    }
+  }
+
+  // 騎樓 → 加查 building §90
+  if (sceneType === "arcade" && primaryCategory === "traffic") {
+    for (const c of matchLegalCitations("building", description + " 騎樓", "arcade")) {
+      const key = `${c.statute}|${c.article}`;
+      if (c.statute === "建築法" && !seen.has(key)) {
+        seen.add(key);
+        out.push(c);
+      }
+    }
+  }
+
+  // 無障礙通道 → 加查 building §57
+  if (sceneType === "wheelchair_path" && primaryCategory === "traffic") {
+    for (const c of matchLegalCitations("building", description + " 無障礙 輪椅通道", "wheelchair_path")) {
+      const key = `${c.statute}|${c.article}`;
+      if (c.statute === "身心障礙者權益保障法" && !seen.has(key)) {
+        seen.add(key);
+        out.push(c);
+      }
+    }
+  }
+
+  return out;
 }
 
 export function categoryLabel(category: ViolationCategory): string {

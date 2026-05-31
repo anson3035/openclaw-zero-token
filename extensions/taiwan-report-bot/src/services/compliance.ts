@@ -1,4 +1,4 @@
-import { matchLegalCitations } from "../data/legal-rules.js";
+import { matchLegalCitationsMulti } from "../data/legal-rules.js";
 import type { ComplianceCheck, LegalCitation, ReportContext } from "../types.js";
 import { computeStatuteOfLimitations } from "./statute-of-limitations.js";
 
@@ -54,7 +54,35 @@ export function checkCompliance(
 ): ComplianceCheck {
   const issues: string[] = [];
   const matchedCitations =
-    citations ?? matchLegalCitations(ctx.analysis.category, ctx.analysis.description);
+    citations ??
+    matchLegalCitationsMulti(
+      ctx.analysis.category,
+      ctx.analysis.description,
+      ctx.analysis.sceneType,
+    );
+
+  // 0) 場域豁免（派出所 / 軍營 / 公務車於指定處停放）
+  if (
+    ctx.analysis.sceneType === "private_property" ||
+    ctx.analysis.vehicleType === "police" ||
+    ctx.analysis.vehicleType === "government"
+  ) {
+    issues.push(
+      "❗ 影像識別為**權威場域**（派出所 / 軍營 / 公務車於指定處），警車於執勤駐地停放屬合法（依道交 §90、§91 警勤車豁免規定）。本案不在 §7-1 民眾檢舉範圍。如對警員勤務有疑慮，請改循：110 / 1999 / 警察機關政風單位 / 監察院陳情。",
+    );
+  }
+
+  // 0.5) EV 排氣豁免（電動車不可能排氣超標）
+  if (
+    (ctx.analysis.vehicleType === "ev_car" ||
+      ctx.analysis.vehicleType === "ev_motorcycle" ||
+      ctx.analysis.vehicleType === "rental_ev") &&
+    /(排氣|黑煙|空污)/.test(ctx.analysis.description)
+  ) {
+    issues.push(
+      "❗ 影像識別為**電動車**（無內燃機排氣管），不可能觸發空污法 §40 排氣超標。請檢視違規描述是否誤判。",
+    );
+  }
 
   // 1) 具名舉發
   if (!ctx.reporter) {

@@ -22,6 +22,48 @@ export interface ReporterIdentity {
   nationalId?: string; // optional 身分證字號
 }
 
+/**
+ * 車輛類型 — 由 vision 模型回報，用於：
+ *   - EV 不應觸發空污 §40 排氣超標
+ *   - 計程車 / 公務車於招呼站 / 公務停車格有豁免規則
+ *   - 大型車 / 重機適用條文不同
+ */
+export type VehicleType =
+  | "car" // 一般小客車
+  | "suv"
+  | "truck" // 貨車
+  | "bus" // 大客車
+  | "motorcycle_light" // 輕/普通機車 (≤250cc)
+  | "motorcycle_heavy" // 大型重型機車 (>250cc)
+  | "ev_car" // 電動小客車（E 前綴牌）
+  | "ev_motorcycle" // 電動機車（綠牌 + 電動車標）
+  | "rental_ev" // 租賃 EV（RE 前綴）
+  | "taxi" // 計程車（T*/Y* 前綴）
+  | "government" // 公務車
+  | "police" // 警車
+  | "unknown";
+
+/**
+ * 違規場景類型 — 由 vision 模型回報，用於精確路由法條。
+ * 比起單純文字描述更可靠。
+ */
+export type SceneType =
+  | "red_line" // 紅線（禁止臨時停車）
+  | "yellow_line" // 黃線（禁止停車）
+  | "sidewalk" // 一般人行道
+  | "arcade" // 騎樓
+  | "wheelchair_path" // 無障礙通道（含黃色引導磚）
+  | "fire_facility" // 消防栓 / 消防車出入口
+  | "bus_stop" // 公車 / 計程車招呼站
+  | "intersection" // 交岔路口 10 m 內
+  | "disabled_parking" // 身心障礙專用車位
+  | "motorcycle_grid" // 機車停車格
+  | "metered_parking" // 計時收費停車格
+  | "designated_parking" // 一般合法停車格
+  | "private_property" // 私人土地 / 派出所等權威場域
+  | "moving_violation" // 動態違規（闖紅、未禮讓）
+  | "unknown";
+
 export interface AnalyzedViolation {
   category: ViolationCategory;
   subject: string;
@@ -34,6 +76,10 @@ export interface AnalyzedViolation {
   };
   confidence: "high" | "medium" | "low";
   evidenceGaps: string[];
+  /** 車輛類型 — 預設 unknown，由 vision 模型回報。 */
+  vehicleType?: VehicleType;
+  /** 違規場景類型 — 用於精確路由法條。 */
+  sceneType?: SceneType;
 }
 
 export interface ResolvedAddress {

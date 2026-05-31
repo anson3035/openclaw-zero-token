@@ -1,5 +1,5 @@
 import { lookupRecipients, normalizePhoneE164 } from "../data/authorities.js";
-import { categoryLabel, matchLegalCitations } from "../data/legal-rules.js";
+import { categoryLabel, matchLegalCitationsMulti } from "../data/legal-rules.js";
 import type {
   LegalCitation,
   MediaEvidence,
@@ -147,7 +147,11 @@ function reporterLine(ctx: ReportContext): string {
 
 export function buildReport(ctx: ReportContext): ReportArtifact {
   const label = categoryLabel(ctx.analysis.category);
-  const citations = matchLegalCitations(ctx.analysis.category, ctx.analysis.description);
+  const citations = matchLegalCitationsMulti(
+    ctx.analysis.category,
+    ctx.analysis.description,
+    ctx.analysis.sceneType,
+  );
   const recipient = lookupRecipients(ctx.address.city, ctx.analysis.category);
   const sms = buildSmsArtifact(ctx);
   const compliance = checkCompliance(ctx, citations);
