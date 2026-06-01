@@ -135,6 +135,34 @@
         : `已選 ${pickedFiles.length} 個檔案：${pickedFiles.map((f) => f.name).join(", ")}`;
   }
 
+  // ---------- 手機 native 功能（透過 MobileBridge） ----------
+  const mobileActions = document.getElementById("mobileActions");
+  const cameraBtn = document.getElementById("cameraBtn");
+  const geolocBtn = document.getElementById("geolocBtn");
+  if (window.MobileBridge) {
+    mobileActions.classList.remove("hidden");
+    cameraBtn?.addEventListener("click", async () => {
+      try {
+        const file = await window.MobileBridge.takePhoto();
+        pickedFiles.push(file);
+        syncPicked();
+      } catch (err) {
+        alert("相機操作失敗：" + (err.message || err));
+      }
+    });
+    geolocBtn?.addEventListener("click", async () => {
+      try {
+        const pos = await window.MobileBridge.getCurrentPosition();
+        const txt = captionEl.value.trim();
+        const geo = `（裝置定位：${pos.latitude.toFixed(6)}, ${pos.longitude.toFixed(6)}，精度 ±${Math.round(pos.accuracy)}m）`;
+        captionEl.value = txt ? `${txt}\n${geo}` : geo;
+        alert(`✅ 已加入裝置定位至補充說明：\n${pos.latitude.toFixed(6)}, ${pos.longitude.toFixed(6)}`);
+      } catch (err) {
+        alert("定位失敗：" + (err.message || err));
+      }
+    });
+  }
+
   analyzeBtn.addEventListener("click", async () => {
     analyzeBtn.disabled = true;
     uploadStatus.textContent = "📥 上傳並分析中…（10–20 秒）";

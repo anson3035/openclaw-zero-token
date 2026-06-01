@@ -81,6 +81,10 @@
           <p class="text-slate-500">將檔案拖曳至此，或<span class="text-blue-600 underline">點此選擇</span></p>
           <input id="fileInput" type="file" accept="image/*,video/*" multiple class="hidden" />
         </div>
+        <div id="mobileActions" class="hidden mt-3 grid grid-cols-2 gap-2">
+          <button id="cameraBtn" class="bg-slate-100 hover:bg-slate-200 py-2 rounded text-sm">📷 用相機拍照</button>
+          <button id="geolocBtn" class="bg-slate-100 hover:bg-slate-200 py-2 rounded text-sm">📍 取得當前位置</button>
+        </div>
         <textarea id="caption" placeholder="補充說明（選填）" rows="2" class="w-full mt-3 border border-slate-300 rounded px-3 py-2 text-sm"></textarea>
         <button id="analyzeBtn" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded disabled:opacity-50" disabled>
           📤 上傳並分析

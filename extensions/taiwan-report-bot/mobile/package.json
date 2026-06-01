@@ -1,0 +1,33 @@
+{
+  "name": "@violation-bot/mobile",
+  "version": "0.1.0",
+  "description": "Capacitor mobile wrapper for Taiwan Violation Reporting bot",
+  "private": true,
+  "scripts": {
+    "build": "bash scripts/build-www.sh",
+    "ios:add": "npx cap add ios",
+    "ios:open": "npx cap open ios",
+    "ios:run": "npx cap run ios",
+    "android:add": "npx cap add android",
+    "android:open": "npx cap open android",
+    "android:run": "npx cap run android",
+    "sync": "npm run build && npx cap sync",
+    "doctor": "npx cap doctor"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.2",
+    "@capacitor/camera": "^6.1.2",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/geolocation": "^6.1.0",
+    "@capacitor/ios": "^6.2.1",
+    "@capacitor/network": "^6.0.3",
+    "@capacitor/preferences": "^6.0.3",
+    "@capacitor/share": "^6.0.3",
+    "@capacitor/splash-screen": "^6.0.3",
+    "@capacitor/status-bar": "^6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.1"
+  }
+}
