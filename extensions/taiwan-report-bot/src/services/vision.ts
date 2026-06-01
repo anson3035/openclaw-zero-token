@@ -41,6 +41,7 @@ const sceneTypeSchema = z.enum([
   "motorcycle_grid",
   "metered_parking",
   "designated_parking",
+  "bicycle_lane",
   "private_property",
   "moving_violation",
   "unknown",
@@ -109,7 +110,7 @@ const SYSTEM_PROMPT = `你是台灣行政法規檢舉稽核專家。分析使用
   "confidence": "high|medium|low",
   "evidenceGaps": ["列出證據不足之處，如：車牌模糊、時間戳記缺失、違規事實不明顯"],
   "vehicleType": "選一：car/suv/truck/bus/motorcycle_light/motorcycle_heavy/ev_car/ev_motorcycle/rental_ev/taxi/government/police/unknown",
-  "sceneType": "選一：red_line/yellow_line/sidewalk/arcade/wheelchair_path/fire_facility/bus_stop/intersection/disabled_parking/motorcycle_grid/metered_parking/designated_parking/private_property/moving_violation/unknown",
+  "sceneType": "選一：red_line/yellow_line/sidewalk/arcade/wheelchair_path/fire_facility/bus_stop/intersection/disabled_parking/motorcycle_grid/metered_parking/designated_parking/bicycle_lane/private_property/moving_violation/unknown",
   "signTexts": ["畫面中所有可見之告示牌、路標、看板、路面標字文字。例：請留輪椅通道、禁止停車、24 小時違規拖吊。沒有則回 []"],
   "privacyRegions": [
     {
@@ -156,6 +157,7 @@ sceneType 判斷準則：
 - 有「請留輪椅通」「無障礙通道」標示 → wheelchair_path
 - 機車格邊線可見（白色矩形格）→ motorcycle_grid
 - 計時收費繳費柱可見 → metered_parking
+- 綠色塗裝道路（含「自行車」「慢車」「機車優先」字樣）→ bicycle_lane
 - 派出所、警局、軍營等權威場域 → private_property
 - 闖紅燈 / 未禮讓 / 蛇行等動態 → moving_violation
 

@@ -60,6 +60,7 @@ export type SceneType =
   | "motorcycle_grid" // 機車停車格
   | "metered_parking" // 計時收費停車格
   | "designated_parking" // 一般合法停車格
+  | "bicycle_lane" // 自行車道 / 慢車道（綠色道路）
   | "private_property" // 私人土地 / 派出所等權威場域
   | "moving_violation" // 動態違規（闖紅、未禮讓）
   | "unknown";

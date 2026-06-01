@@ -153,6 +153,20 @@ const trafficRules: RuleEntry[] = [
       evidenceMode: "continuous",
     },
   },
+  // ===== 自行車道 / 慢車道占用 (v4.6 新增) =====
+  {
+    pattern: /(自行車道|慢車道|機慢車優先|綠色.*車道|腳踏車道|機車優先道|YouBike.*道)/,
+    citation: {
+      shortLabel: "違規停車（自行車道/慢車道）",
+      statute: "道路交通管理處罰條例",
+      article: "第 56 條 第 1 項 第 4 款（類推適用快車道）",
+      penalty: "占用自行車道、慢車道或機車優先道停車，致影響慢車通行安全。處 600–1,200 元罰鍰。",
+      reportableByCitizen: true,
+      policeInitiated: true,
+      evidenceMode: "instantaneous",
+      liabilityTarget: "owner",
+    },
+  },
 
   // ============ 動態違規（民眾可檢舉，需錄影或連續證據） ============
   {
@@ -698,6 +712,7 @@ const SCENE_TYPE_KEYWORDS: Record<string, string> = {
   disabled_parking: " 身心障礙專用車位",
   motorcycle_grid: " 機車格",
   metered_parking: " 計時收費 停車格",
+  bicycle_lane: " 自行車道 慢車道 機慢車優先",
   moving_violation: " 動態違規",
 };
 
