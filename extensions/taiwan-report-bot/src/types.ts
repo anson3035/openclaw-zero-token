@@ -86,6 +86,36 @@ export interface AnalyzedViolation {
    * compliance gate 用此加重證據力或觸發特殊條文（如身障 §57）。
    */
   signTexts?: string[];
+  /**
+   * 應馬賽克處理之第三人隱私區域（bbox 為 0..1 normalized）。
+   * Vision 模型應辨識違規無關之人臉、車牌、住址門牌、車內人物。
+   */
+  privacyRegions?: PrivacyRegion[];
+  /**
+   * 附加違規車牌 — 同畫面內多輛違規車輛時使用。
+   * 主車牌仍在 identifiers.licensePlate；本陣列為**其他**違規車輛。
+   * /batch 指令會逐一拆成獨立案件。
+   */
+  additionalPlates?: AdditionalPlate[];
+}
+
+export interface AdditionalPlate {
+  licensePlate: string;
+  /** Per-plate vehicle type（如有 LPR 多次掃描可得）*/
+  vehicleType?: VehicleType;
+  /** 此車違規描述（若與主車一致則重複；不同則拆案分述）*/
+  description?: string;
+  /** LPR 信心 */
+  confidence: number;
+}
+
+export interface PrivacyRegion {
+  /** 區域類型 */
+  type: "face" | "plate" | "address" | "person" | "other";
+  /** 為何需要馬賽克 */
+  reason: string;
+  /** Normalized 0..1 bounding box */
+  bbox: { x: number; y: number; w: number; h: number };
 }
 
 export interface ResolvedAddress {
@@ -195,6 +225,8 @@ export interface SmsArtifact {
 }
 
 export interface ReportArtifact {
+  /** 本系統內部追蹤號（非主管機關官方受文號）。格式：TRB-YYYYMMDD-NNNNN */
+  trackingId: string;
   markdown: string;
   emailSubject: string;
   emailBody: string;

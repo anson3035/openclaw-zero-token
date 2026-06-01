@@ -155,6 +155,7 @@ export function buildReport(ctx: ReportContext): ReportArtifact {
   const recipient = lookupRecipients(ctx.address.city, ctx.analysis.category);
   const sms = buildSmsArtifact(ctx);
   const compliance = checkCompliance(ctx, citations);
+  const trackingId = generateTrackingId();
 
   const evidenceModeLabel = (m?: string): string => {
     if (m === "instantaneous") return "單張即可";
@@ -226,6 +227,8 @@ export function buildReport(ctx: ReportContext): ReportArtifact {
       : "";
 
   const markdown = `### 違規檢舉報告書
+> 內部追蹤號：\`${trackingId}\`（**非主管機關官方受文號**；機關受文後另行編號）
+
 
 **1. 基本資訊**
 - 違規類型：${label}
@@ -312,6 +315,7 @@ ${recipient.email.split("@")[1] ?? "承辦單位"}
 （檢舉時間：${new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })}）`;
 
   return {
+    trackingId,
     markdown,
     emailSubject,
     emailBody,
@@ -321,4 +325,12 @@ ${recipient.email.split("@")[1] ?? "承辦單位"}
     legalCitations: citations,
     compliance,
   };
+}
+
+/** 產生內部追蹤號 TRB-YYYYMMDD-NNNNN（亂數最後 5 碼，碰撞機率低）。 */
+function generateTrackingId(): string {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  const rand = Math.floor(Math.random() * 100000).toString().padStart(5, "0");
+  return `TRB-${ymd}-${rand}`;
 }

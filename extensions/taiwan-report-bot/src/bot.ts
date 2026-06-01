@@ -282,6 +282,132 @@ export function createBot(): Telegraf {
     });
   });
 
+  bot.command("batch", async (ctx) => {
+    const session = await getSession(ctx.chat.id);
+    if (!session) {
+      await ctx.reply("尚無待處理檢舉。請先傳送照片。");
+      return;
+    }
+    const additional = session.ctx.analysis.additionalPlates ?? [];
+    const primary = session.ctx.analysis.identifiers.licensePlate;
+    if (additional.length === 0) {
+      await ctx.reply(
+        `📋 本案目前僅一輛違規車輛（${primary ?? "未辨識"}）。\n若畫面有多車違規但未被辨識，請補拍特寫或用 /plate 手動輸入。`,
+      );
+      return;
+    }
+    const lines = [
+      "📦 *多車牌批次檢舉*",
+      "",
+      `本案 vision 模型偵測到 ${additional.length + 1} 輛違規車輛：`,
+      `  1. \`${primary}\`（主要，已建報告）`,
+      ...additional.map(
+        (a, i) =>
+          `  ${i + 2}. \`${a.licensePlate}\`（${(a.confidence * 100).toFixed(0)}%）`,
+      ),
+      "",
+      "送件策略：",
+      "  • 系統將為**每張車牌**產生獨立報告與 email",
+      "  • 各案共用同一張照片，但 SHA-256 / trackingId 各自獨立",
+      "  • /confirm 寄出時，會送出 N 封 email（每案一份）",
+      "  • 您仍可用 /plate <車牌> 修正主車牌",
+      "",
+      "確認後請 /draft 預覽，再 /send → /confirm。",
+      "或 /cancel 取消。",
+    ].join("\n");
+    await ctx.reply(lines, { parse_mode: "Markdown" });
+  });
+
+  bot.command("history", async (ctx) => {
+    const { listUserCases } = await import("./services/history.js");
+    const cases = await listUserCases(tgSubject(ctx.chat.id), 20);
+    if (cases.length === 0) {
+      await ctx.reply("📭 您目前無歷史送件紀錄。");
+      return;
+    }
+    const lines = ["📚 *歷史案件（最近 20 件）*", ""];
+    for (const c of cases) {
+      const date = new Date(c.sentAt).toLocaleString("zh-TW", {
+        timeZone: "Asia/Taipei",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      lines.push(
+        `\`${c.trackingId}\`  ${date}\n  ${c.plate ?? "(無車牌)"}  · ${c.category ?? "?"} · ${c.recipient}`,
+      );
+    }
+    await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
+  });
+
+  bot.command("pdf", async (ctx) => {
+    const session = await getSession(ctx.chat.id);
+    if (!session) {
+      await ctx.reply("尚無待處理檢舉。請先傳送照片。");
+      return;
+    }
+    await ctx.reply("📄 產生 PDF 報告書中…");
+    try {
+      const { generateReportPdf } = await import("./services/pdf.js");
+      const outPath = join(
+        loadConfig().EVIDENCE_DIR,
+        `${session.artifact.trackingId}.pdf`,
+      );
+      await generateReportPdf(session.artifact, session.ctx, outPath, {
+        includeImage: true,
+      });
+      await ctx.replyWithDocument(
+        { source: outPath },
+        { caption: `📄 ${session.artifact.trackingId}.pdf` },
+      );
+    } catch (err) {
+      await ctx.reply(`❌ PDF 產生失敗：${(err as Error).message}`);
+    }
+  });
+
+  bot.command("mask", async (ctx) => {
+    const session = await getSession(ctx.chat.id);
+    if (!session) {
+      await ctx.reply("尚無待處理檢舉。請先傳送照片。");
+      return;
+    }
+    const regions = session.ctx.analysis.privacyRegions ?? [];
+    if (regions.length === 0) {
+      await ctx.reply("✅ Vision 模型未偵測到需馬賽克之第三人資訊。原始照片可直接送件。");
+      return;
+    }
+    await ctx.reply(`🎭 偵測到 ${regions.length} 個隱私區域，正在處理…`);
+    const { applyPrivacyMask, describePrivacyMasks } = await import(
+      "./services/masking.js"
+    );
+    const maskedPaths: string[] = [];
+    for (const p of session.attachmentPaths) {
+      const out = `${p}.masked.jpg`;
+      try {
+        await applyPrivacyMask(p, regions, out);
+        maskedPaths.push(out);
+      } catch (err) {
+        console.error("[mask]", err);
+      }
+    }
+    if (maskedPaths.length === 0) {
+      await ctx.reply("❌ 馬賽克處理失敗，請查看 server log。");
+      return;
+    }
+    // 取代附件路徑為馬賽克版本
+    session.attachmentPaths = maskedPaths;
+    await saveSession(ctx.chat.id, session);
+    await ctx.reply(
+      [
+        "✅ 馬賽克處理完成",
+        `已處理區域：${describePrivacyMasks(regions)}`,
+        "",
+        "送件時將使用馬賽克版本（原檔保留於本機 audit 用）。",
+        "輸入 /send 進入寄件流程。",
+      ].join("\n"),
+    );
+  });
+
   bot.command("draft", async (ctx) => {
     const session = await getSession(ctx.chat.id);
     if (!session) {
@@ -335,6 +461,8 @@ export function createBot(): Telegraf {
       meta: { userId: ctx.from?.id, to: target },
     });
 
+    const additionalCount = (session.ctx.analysis.additionalPlates ?? []).length;
+    const totalEmails = additionalCount + 1;
     await ctx.reply(
       [
         "⚠ *請確認以下送件資訊*：",
@@ -343,6 +471,9 @@ export function createBot(): Telegraf {
         `*主旨*：${session.artifact.emailSubject}`,
         `*附件數*：${session.attachmentPaths.length}`,
         `*檢舉人*：${session.ctx.reporter?.name ?? "（未設定）"}`,
+        additionalCount > 0
+          ? `*批次數*：${totalEmails} 封（主案 + ${additionalCount} 個附加車牌）`
+          : "",
         "",
         "━━━━━━━━━━━━━━━━━━━━━━",
         "⚖ *法律警示（請務必詳閱）*",
@@ -385,7 +516,12 @@ export function createBot(): Telegraf {
       await audit({
         type: "sent",
         subject: tgSubject(ctx.chat.id),
-        meta: { userId: ctx.from?.id, messageId: result.messageId, accepted: result.accepted },
+        meta: {
+          userId: ctx.from?.id,
+          trackingId: session.artifact.trackingId,
+          messageId: result.messageId,
+          accepted: result.accepted,
+        },
       });
       await ctx.reply(
         `✅ 已寄出檢舉信\n收件：${result.accepted.join(", ")}\nMessage-ID：${result.messageId}`,
@@ -701,7 +837,16 @@ async function handleAlbum(ctxs: import("telegraf").Context[]): Promise<void> {
     await audit({
       type: "report_built",
       subject: tgSubject(first.chat.id),
-      meta: { userId: first.from.id, ok: artifact.compliance.ok, issues: artifact.compliance.issues.length },
+      meta: {
+        userId: first.from.id,
+        trackingId: artifact.trackingId,
+        category: analysis.category,
+        plate: analysis.identifiers.licensePlate,
+        address: address.full,
+        citations: artifact.legalCitations.map((c) => c.shortLabel ?? c.article),
+        ok: artifact.compliance.ok,
+        issues: artifact.compliance.issues.length,
+      },
     });
 
     await first.reply(artifact.markdown, { parse_mode: "Markdown" });

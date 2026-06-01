@@ -206,7 +206,15 @@ export function createApi(): Hono<AppEnv> {
     await audit({
       type: "report_built",
       subject: sessionKeyForUser(user.id),
-      meta: { ok: artifact.compliance.ok, issues: artifact.compliance.issues.length },
+      meta: {
+        trackingId: artifact.trackingId,
+        category: analysis.category,
+        plate: analysis.identifiers.licensePlate,
+        address: address.full,
+        citations: artifact.legalCitations.map((c) => c.shortLabel ?? c.article),
+        ok: artifact.compliance.ok,
+        issues: artifact.compliance.issues.length,
+      },
     });
 
     return c.json({ ok: true, artifact, evidence: evidences.map(publicEvidence) });
@@ -309,7 +317,11 @@ export function createApi(): Hono<AppEnv> {
       await audit({
         type: "sent",
         subject: sessionKeyForUser(user.id),
-        meta: { messageId: result.messageId },
+        meta: {
+          trackingId: session.artifact.trackingId,
+          messageId: result.messageId,
+          accepted: result.accepted,
+        },
       });
       await clearSessionByKey(sessionKeyForUser(user.id));
       return c.json({ ok: true, messageId: result.messageId, accepted: result.accepted });
@@ -350,6 +362,50 @@ export function createApi(): Hono<AppEnv> {
     try {
       const lpr = await recognizePlate(paths, vehicleTypeHint);
       return c.json({ ok: true, lpr });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  app.get("/api/cases", requireAuth, async (c) => {
+    const user = c.get("user");
+    const { listUserCases } = await import("../services/history.js");
+    const limit = Math.min(200, Number(c.req.query("limit") ?? 50));
+    const cases = await listUserCases(sessionKeyForUser(user.id), limit);
+    return c.json({ ok: true, cases });
+  });
+
+  app.get("/api/cases/:trackingId", requireAuth, async (c) => {
+    const user = c.get("user");
+    const trackingId = c.req.param("trackingId");
+    if (!trackingId) return c.json({ error: "缺少 trackingId" }, 400);
+    const { getUserCase } = await import("../services/history.js");
+    const caseData = await getUserCase(sessionKeyForUser(user.id), trackingId);
+    if (!caseData) return c.json({ error: "找不到案件" }, 404);
+    return c.json({ ok: true, case: caseData });
+  });
+
+  app.get("/api/pdf", requireAuth, async (c) => {
+    const user = c.get("user");
+    const session = await getSessionByKey(sessionKeyForUser(user.id));
+    if (!session) return c.json({ error: "尚無進行中之檢舉" }, 404);
+    try {
+      const { generateReportPdf } = await import("../services/pdf.js");
+      const outPath = join(
+        loadConfig().EVIDENCE_DIR,
+        `${session.artifact.trackingId}.pdf`,
+      );
+      await generateReportPdf(session.artifact, session.ctx, outPath, {
+        includeImage: true,
+      });
+      const { readFile } = await import("node:fs/promises");
+      const buf = await readFile(outPath);
+      return new Response(buf, {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${session.artifact.trackingId}.pdf"`,
+        },
+      });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 500);
     }

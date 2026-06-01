@@ -61,6 +61,30 @@ const analysisSchema = z.object({
   vehicleType: vehicleTypeSchema.optional(),
   sceneType: sceneTypeSchema.optional(),
   signTexts: z.array(z.string()).optional(),
+  privacyRegions: z
+    .array(
+      z.object({
+        type: z.enum(["face", "plate", "address", "person", "other"]),
+        reason: z.string(),
+        bbox: z.object({
+          x: z.number().min(0).max(1),
+          y: z.number().min(0).max(1),
+          w: z.number().min(0).max(1),
+          h: z.number().min(0).max(1),
+        }),
+      }),
+    )
+    .optional(),
+  additionalPlates: z
+    .array(
+      z.object({
+        licensePlate: z.string(),
+        vehicleType: vehicleTypeSchema.optional(),
+        description: z.string().optional(),
+        confidence: z.number().min(0).max(1),
+      }),
+    )
+    .optional(),
 });
 
 const SYSTEM_PROMPT = `你是台灣行政法規檢舉稽核專家。分析使用者上傳的影像，識別違規行為並產出結構化 JSON。
@@ -86,8 +110,30 @@ const SYSTEM_PROMPT = `你是台灣行政法規檢舉稽核專家。分析使用
   "evidenceGaps": ["列出證據不足之處，如：車牌模糊、時間戳記缺失、違規事實不明顯"],
   "vehicleType": "選一：car/suv/truck/bus/motorcycle_light/motorcycle_heavy/ev_car/ev_motorcycle/rental_ev/taxi/government/police/unknown",
   "sceneType": "選一：red_line/yellow_line/sidewalk/arcade/wheelchair_path/fire_facility/bus_stop/intersection/disabled_parking/motorcycle_grid/metered_parking/designated_parking/private_property/moving_violation/unknown",
-  "signTexts": ["畫面中所有可見之告示牌、路標、看板、路面標字文字。例：請留輪椅通道、禁止停車、24 小時違規拖吊。沒有則回 []"]
+  "signTexts": ["畫面中所有可見之告示牌、路標、看板、路面標字文字。例：請留輪椅通道、禁止停車、24 小時違規拖吊。沒有則回 []"],
+  "privacyRegions": [
+    {
+      "type": "face|plate|address|person|other",
+      "reason": "為何需馬賽克（例：路人臉部、第三方車牌、住址門牌）",
+      "bbox": {"x": 0.25, "y": 0.55, "w": 0.10, "h": 0.04}
+    }
+  ]
 }
+
+additionalPlates 提取準則：
+- 若畫面有**多輛違規車輛**（如騎樓滿排機車、紅線一整列違停），
+  將主車牌放入 identifiers.licensePlate，其餘違規車輛放入此陣列
+- 只列**有同樣違規**的車輛（場景相同則違規相同）
+- 旁觀車輛、合法停車的不列入此陣列
+- 沒有時回 []
+
+privacyRegions 提取準則：
+- **第三方車牌**：畫面中**非違規當事人**之其他車牌（如旁觀車輛、合法停車）。違規車牌**不馬賽克**。
+- **人臉**：與違規無關之路人、行人、商家。違規駕駛人臉可保留（如闖紅燈影像）。
+- **住址門牌**：背景明顯可見之第三人住處門牌。違規地點本身之路名/門牌則保留。
+- **第三人身形**：完整入鏡之路人。
+- 沒有需馬賽克者則回 []。
+- bbox 為 normalized 0..1 座標。
 
 signTexts 提取準則：
 - 完整讀出所有可辨識文字，繁體中文優先
