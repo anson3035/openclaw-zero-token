@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { loadConfig } from "../config.js";
 import type { ReporterIdentity, ReportArtifact, ReportContext } from "../types.js";
@@ -57,10 +58,60 @@ async function readStore(): Promise<StoreSchema> {
   }
 }
 
+/**
+ * 序列化所有寫入避免 race condition（concurrent saveSession 等會覆寫彼此）。
+ * 同時用「寫到 temp file 再 rename」確保中斷時不會留下半寫的 store.json。
+ */
+let writeQueue: Promise<void> = Promise.resolve();
+
 async function writeStore(data: StoreSchema): Promise<void> {
-  const p = storePath();
-  await mkdir(dirname(p), { recursive: true });
-  await writeFile(p, JSON.stringify(data, null, 2), "utf8");
+  // 串接到 queue 尾巴，確保上一個寫完才開始
+  const work = writeQueue.then(async () => {
+    const p = storePath();
+    await mkdir(dirname(p), { recursive: true });
+    // atomic write: 先寫 temp 再 rename（POSIX rename 是原子的）
+    const tmp = `${p}.${randomBytes(4).toString("hex")}.tmp`;
+    await writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
+    await rename(tmp, p);
+  });
+  // 推進 queue（即使本次失敗，下次仍可繼續）
+  writeQueue = work.catch(() => {});
+  return work;
+}
+
+/**
+ * Read-modify-write 序列化 helper：把整段 read → modify → write 作為單一
+ * critical section，避免兩個 caller 各自讀後互相覆寫對方的修改。
+ *
+ * 用法：await mutateStore(data => { data.sessions[k] = ...; });
+ */
+async function mutateStore(
+  mutator: (data: StoreSchema) => StoreSchema | void,
+): Promise<void> {
+  const work = writeQueue.then(async () => {
+    const p = storePath();
+    let data: StoreSchema;
+    try {
+      const raw = await readFile(p, "utf8");
+      const parsed = JSON.parse(raw) as Partial<StoreSchema>;
+      data = {
+        sessions: parsed.sessions ?? {},
+        identities: parsed.identities ?? {},
+        users: parsed.users ?? {},
+        usersByName: parsed.usersByName ?? {},
+        authTokens: parsed.authTokens ?? {},
+      };
+    } catch {
+      data = { sessions: {}, identities: {}, users: {}, usersByName: {}, authTokens: {} };
+    }
+    const result = mutator(data) ?? data;
+    await mkdir(dirname(p), { recursive: true });
+    const tmp = `${p}.${randomBytes(4).toString("hex")}.tmp`;
+    await writeFile(tmp, JSON.stringify(result, null, 2), "utf8");
+    await rename(tmp, p);
+  });
+  writeQueue = work.catch(() => {});
+  return work;
 }
 
 function pruneExpired(data: StoreSchema): StoreSchema {
@@ -85,9 +136,10 @@ function reviveDates<T extends PersistedSession>(s: T): T {
 
 // ---------- generic key-based ----------
 export async function saveSessionByKey(key: string, session: PersistedSession): Promise<void> {
-  const data = pruneExpired(await readStore());
-  data.sessions[key] = session;
-  await writeStore(data);
+  await mutateStore((data) => {
+    pruneExpired(data);
+    data.sessions[key] = session;
+  });
 }
 
 export async function getSessionByKey(key: string): Promise<PersistedSession | undefined> {
@@ -98,15 +150,15 @@ export async function getSessionByKey(key: string): Promise<PersistedSession | u
 }
 
 export async function clearSessionByKey(key: string): Promise<void> {
-  const data = await readStore();
-  delete data.sessions[key];
-  await writeStore(data);
+  await mutateStore((data) => {
+    delete data.sessions[key];
+  });
 }
 
 export async function saveIdentityByKey(key: string, identity: ReporterIdentity): Promise<void> {
-  const data = await readStore();
-  data.identities[key] = identity;
-  await writeStore(data);
+  await mutateStore((data) => {
+    data.identities[key] = identity;
+  });
 }
 
 export async function getIdentityByKey(key: string): Promise<ReporterIdentity | undefined> {
@@ -115,9 +167,9 @@ export async function getIdentityByKey(key: string): Promise<ReporterIdentity | 
 }
 
 export async function clearIdentityByKey(key: string): Promise<void> {
-  const data = await readStore();
-  delete data.identities[key];
-  await writeStore(data);
+  await mutateStore((data) => {
+    delete data.identities[key];
+  });
 }
 
 // ---------- Telegram chatId convenience wrappers ----------
@@ -132,13 +184,13 @@ export const clearIdentity = (chatId: number) => clearIdentityByKey(tg(chatId));
 
 // ---------- Users + Auth ----------
 export async function createUser(user: UserAccount): Promise<void> {
-  const data = await readStore();
-  if (data.usersByName[user.username]) {
-    throw new Error("username already taken");
-  }
-  data.users[user.id] = user;
-  data.usersByName[user.username] = user.id;
-  await writeStore(data);
+  await mutateStore((data) => {
+    if (data.usersByName[user.username]) {
+      throw new Error("username already taken");
+    }
+    data.users[user.id] = user;
+    data.usersByName[user.username] = user.id;
+  });
 }
 
 export async function getUserById(id: string): Promise<UserAccount | undefined> {
@@ -154,9 +206,10 @@ export async function getUserByName(username: string): Promise<UserAccount | und
 }
 
 export async function saveAuthToken(token: AuthToken): Promise<void> {
-  const data = pruneExpired(await readStore());
-  data.authTokens[token.token] = token;
-  await writeStore(data);
+  await mutateStore((data) => {
+    pruneExpired(data);
+    data.authTokens[token.token] = token;
+  });
 }
 
 export async function getAuthToken(token: string): Promise<AuthToken | undefined> {
@@ -167,7 +220,7 @@ export async function getAuthToken(token: string): Promise<AuthToken | undefined
 }
 
 export async function deleteAuthToken(token: string): Promise<void> {
-  const data = await readStore();
-  delete data.authTokens[token];
-  await writeStore(data);
+  await mutateStore((data) => {
+    delete data.authTokens[token];
+  });
 }

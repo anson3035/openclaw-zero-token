@@ -44,7 +44,8 @@ describe("v4.4 — trackingId 內部追蹤號", () => {
       address: { full: "台北市某路 1 號", city: "台北市", source: "user-input" },
       reporter: { name: "王小明", contact: "0912-345-678" },
     });
-    expect(r.trackingId).toMatch(/^TRB-\d{8}-\d{5}$/);
+    // v4.7 安全強化：trackingId 改用 CSPRNG base36（7 碼），不再用 Math.random 5 碼
+    expect(r.trackingId).toMatch(/^TRB-\d{8}-[0-9A-Z]{7}$/);
   });
 
   it("Markdown 標明非官方受文號", async () => {

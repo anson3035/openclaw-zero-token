@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { lookupRecipients, normalizePhoneE164 } from "../data/authorities.js";
 import { categoryLabel, matchLegalCitationsMulti } from "../data/legal-rules.js";
 import type {
@@ -327,10 +328,17 @@ ${recipient.email.split("@")[1] ?? "承辦單位"}
   };
 }
 
-/** 產生內部追蹤號 TRB-YYYYMMDD-NNNNN（亂數最後 5 碼，碰撞機率低）。 */
+/**
+ * 產生內部追蹤號 TRB-YYYYMMDD-XXXXXXXX。
+ *
+ * 必須使用 cryptographic RNG（randomBytes），否則：
+ * - Math.random() 不防可預測性：攻擊者觀察數個 trackingId 後可推測同日其他案件號
+ * - 5 碼僅 10^5 ≈ 10 萬空間，同日案件高量時可能碰撞或被枚舉
+ * 改用 32-bit randomBytes（base36 8 碼，~2.8 × 10^12 空間）杜絕枚舉。
+ */
 function generateTrackingId(): string {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-  const rand = Math.floor(Math.random() * 100000).toString().padStart(5, "0");
+  const rand = randomBytes(4).readUInt32BE(0).toString(36).toUpperCase().padStart(7, "0");
   return `TRB-${ymd}-${rand}`;
 }
