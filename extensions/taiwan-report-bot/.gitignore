@@ -1,6 +1,8 @@
 node_modules/
 dist/
 evidence/
-data/
+# Runtime data dir (DATA_DIR default) — anchor to root so it does NOT match
+# the source folder src/data/ which holds legal-rules.ts / authorities.ts.
+/data/
 .env
 *.log
