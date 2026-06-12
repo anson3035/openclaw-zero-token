@@ -92,12 +92,20 @@ export function checkCompliance(
   }
 
   // 2) §7-1 民眾檢舉適用性
+  //   - 全部限警察：硬阻擋（❗）
+  //   - 部分限警察 + 部分民眾可檢舉（mixed）：軟提示（⚠）
+  //     讓使用者知道哪幾條只能由警察執行（如「未戴安全帽」與「機車吸菸」並存時）。
   if (ctx.analysis.category === "traffic") {
     const { reportable, policeOnly } = checkCitizenReportable(matchedCitations);
     if (!reportable) {
       const labels = policeOnly.map((c) => c.shortLabel ?? c.article).join("、");
       issues.push(
         `❗ 此違規類型（${labels}）不在民眾檢舉適用範圍（道交 §7-1）。請改撥 110 由警員到場稽查，或保留證據至當地警察分局報案。`,
+      );
+    } else if (policeOnly.length > 0) {
+      const labels = policeOnly.map((c) => c.shortLabel ?? c.article).join("、");
+      issues.push(
+        `⚠ 同一影像中有 ${policeOnly.length} 條違規屬「限警察執行」（${labels}），僅能透過 110 報案或警員到場稽查；其餘條文仍可民眾檢舉。建議同時撥打 110 補強。`,
       );
     }
   }

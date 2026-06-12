@@ -352,6 +352,36 @@ const trafficRules: RuleEntry[] = [
       evidenceMode: "moving",
     },
   },
+
+  // ===== v4.9：機車 / 自行車駕駛人駕駛時吸菸（2023 菸防法新修） =====
+  // 菸害防制法 §17 III 第 12 款（民國 112 年 3 月 22 日施行）：
+  //   「任何強制使用安全帽之機車及自行車駕駛人，駕駛時不得吸菸」
+  // §49 罰 2,000–10,000 元。主管機關：地方衛生局（檢舉接受窗口）。
+  // 為民眾可檢舉之違規，採證一張清晰持菸畫面即可（instantaneous）。
+  //
+  // 注意：道交 §31 第 5 項僅罰「汽車」駕駛人吸菸，機車吸菸應走菸防法。
+  {
+    pattern: /(機車.*吸菸|機車.*抽菸|機車.*持菸|機車.*手持菸|騎車.*吸菸|騎車.*抽菸|騎士.*持菸|騎士.*吸菸|騎士.*抽菸|機車.*點菸|機車.*咬菸|機車駕駛.*菸)/,
+    citation: {
+      shortLabel: "機車駕駛人駕駛時吸菸（菸防法）",
+      statute: "菸害防制法",
+      article: "第 17 條 第 3 項 第 12 款 / 第 49 條",
+      penalty:
+        "任何強制使用安全帽之機車及自行車駕駛人，駕駛時不得吸菸。處 2,000–10,000 元罰鍰（衛生局裁罰）。",
+      reportableByCitizen: true,
+      policeInitiated: true,
+      evidenceMode: "instantaneous",
+      liabilityTarget: "driver",
+      reward: {
+        available: true,
+        authority: "地方衛生局",
+        basis: "菸害防制法 §32 各縣市自治條例（多數縣市 50% 罰鍰）",
+        rewardType: "percentage_of_fine",
+        estimateRange: "罰鍰之 1/4 至 1/2（依各縣市規定）",
+        notes: "須查獲屬實後核發；部分縣市需檢附本人身分證明。",
+      },
+    },
+  },
   {
     pattern: /(酒駕|酒後駕車|酒測|酒精濃度)/,
     citation: {
