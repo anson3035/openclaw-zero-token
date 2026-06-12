@@ -1,7 +1,7 @@
 /**
  * v4.9 — 機車駕駛人吸菸（菸防法 §17 III 12 款）
  *
- * Trigger photos: 紅色 Vespa 風機車，車牌 872-JFN（兩張）。
+ * Trigger photos: 紅色 Vespa 風機車，車牌 672-JFM（兩張）。
  *   IMG_2833: 騎士右手持菸，無安全帽
  *   IMG_2834: 同騎士後視，仍無安全帽
  *
@@ -37,7 +37,7 @@ describe("v4.9 — 機車吸菸（菸防法 §17 III ⑫）", () => {
     const { matchLegalCitations } = await import("../src/data/legal-rules.js");
     const cs = matchLegalCitations(
       "traffic",
-      "機車 872-JFN 駕駛人吸菸",
+      "機車 672-JFM 駕駛人吸菸",
     );
     expect(cs.some((c) => c.statute === "菸害防制法")).toBe(true);
   });
@@ -84,12 +84,12 @@ describe("v4.9 — 機車吸菸（菸防法 §17 III ⑫）", () => {
   });
 });
 
-describe("v4.9 — 872-JFN 端到端 multi-citation", () => {
+describe("v4.9 — 672-JFM 端到端 multi-citation", () => {
   it("IMG_2833 場景 → 菸防 §17 + 道交 §31 第 6 項 同時命中", async () => {
     const { matchLegalCitationsMulti } = await import("../src/data/legal-rules.js");
     const cs = matchLegalCitationsMulti(
       "traffic",
-      "紅色 Vespa 872-JFN 騎士手持菸、未戴安全帽",
+      "紅色 Vespa 672-JFM 騎士手持菸、未戴安全帽",
       undefined,
     );
     expect(cs.some((c) => c.statute === "菸害防制法")).toBe(true);
@@ -100,7 +100,7 @@ describe("v4.9 — 872-JFN 端到端 multi-citation", () => {
     const { matchLegalCitations } = await import("../src/data/legal-rules.js");
     const cs = matchLegalCitations(
       "traffic",
-      "紅色機車 872-JFN 騎士未戴安全帽",
+      "紅色機車 672-JFM 騎士未戴安全帽",
     );
     const helmet = cs.find((c) => c.shortLabel?.includes("安全帽"));
     expect(helmet).toBeDefined();
@@ -123,9 +123,9 @@ describe("v4.9 — 872-JFN 端到端 multi-citation", () => {
       ],
       analysis: {
         category: "traffic",
-        subject: "機車 872-JFN",
-        description: "紅色機車 872-JFN 騎士未戴安全帽",
-        identifiers: { licensePlate: "872-JFN" },
+        subject: "機車 672-JFM",
+        description: "紅色機車 672-JFM 騎士未戴安全帽",
+        identifiers: { licensePlate: "672-JFM" },
         confidence: "high",
         evidenceGaps: [],
         vehicleType: "motorcycle_light",
@@ -157,9 +157,9 @@ describe("v4.9 — 872-JFN 端到端 multi-citation", () => {
       ],
       analysis: {
         category: "traffic",
-        subject: "機車 872-JFN",
-        description: "紅色 Vespa 872-JFN 騎士右手持菸、未戴安全帽，行駛中",
-        identifiers: { licensePlate: "872-JFN" },
+        subject: "機車 672-JFM",
+        description: "紅色 Vespa 672-JFM 騎士右手持菸、未戴安全帽，行駛中",
+        identifiers: { licensePlate: "672-JFM" },
         confidence: "high",
         evidenceGaps: [],
         vehicleType: "motorcycle_light",
@@ -192,10 +192,10 @@ describe("v4.9 — 872-JFN 端到端 multi-citation", () => {
       ],
       analysis: {
         category: "traffic",
-        subject: "機車 872-JFN",
+        subject: "機車 672-JFM",
         description:
-          "紅色 Vespa 風機車 872-JFN 騎士右手持菸騎乘，未戴安全帽",
-        identifiers: { licensePlate: "872-JFN" },
+          "紅色 Vespa 風機車 672-JFM 騎士右手持菸騎乘，未戴安全帽",
+        identifiers: { licensePlate: "672-JFM" },
         confidence: "high",
         evidenceGaps: [],
         vehicleType: "motorcycle_light",
