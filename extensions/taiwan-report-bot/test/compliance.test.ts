@@ -2,11 +2,23 @@ import { describe, expect, it } from "vitest";
 import { checkCompliance } from "../src/services/compliance.js";
 import type { MediaEvidence, ReportContext } from "../src/types.js";
 
+/**
+ * 產生「相對於現在的 capturedAt」— 舊版把時間寫死 2026-05-23，
+ * 導致實際執行日超過 90 天後 statute-of-limitations 警告會強制 ok=false。
+ * 現改為以現在為基準，僅取字串中 "10:00" / "10:05" 差 5 分鐘之效果。
+ *
+ * 傳入 "2026-05-23T10:00:00+08:00" → 回傳今天早上 10:00 起偏移；
+ * 若字串中含 "10:05" 則偏移 +5 分鐘，"10:01" 偏移 +1 分鐘等等。
+ */
 function evidence(at: string): MediaEvidence {
+  const now = Date.now();
+  const m = at.match(/T\d{2}:(\d{2})/);
+  const offsetMinutes = m ? Number.parseInt(m[1]!, 10) : 0;
   return {
     filePath: "/tmp/x.jpg",
     mimeType: "image/jpeg",
-    capturedAt: new Date(at),
+    // 5 分鐘前基準 + 偏移，確保仍在 90 天時效內
+    capturedAt: new Date(now - (60 - offsetMinutes) * 60_000),
     gps: { lat: 25.04, lon: 121.53 },
     sha256: "c".repeat(64),
     source: "telegram",
